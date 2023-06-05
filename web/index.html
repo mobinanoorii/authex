@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AutHEx</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #FFFFFF;
+            text-align: center;
+        }
+
+        a, a:visited, a:hover, a:active{
+            color: #FFFFFF;
+            text-decoration: underline;
+        }
+
+        .counters {
+            display: flex;
+            justify-content: center;
+            margin-top: 50px;
+        }
+
+        .counter {
+            width: 200px;
+            height: 200px;
+            margin: 20px;
+            border: 2px solid #FFFFFF;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 36px;
+        }
+
+        .list {
+            margin-top: 50px;
+            text-align: left;
+            display: inline-block;
+            padding: 20px;
+        }
+
+        ul {
+            list-style-type: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Autonity Hybrid Exchange</h1>
+    <h4>A <a href="https://en.wikipedia.org/wiki/Central_limit_order_book">CLOB</a> POC for the <a href="https://autonity.org">Autonity</a> Network </h4>
+    <small>Started on {{.Runtime.StartTime.Format "2006-01-02T15:04:05"}} / Version: {{.Runtime.Version}}</small>
+    <div class="counters">
+        
+    </div>
+    <div class="list">
+        <ul>
+            {{range $endpoint := .Endpoints}}
+            <li><strong>{{$endpoint.Path}}</strong> - {{$endpoint.Help}} </li>
+            {{end}}
+        </ul>
+    </div>
+</body>
+
+</html>
