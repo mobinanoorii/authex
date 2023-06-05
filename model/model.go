@@ -23,7 +23,7 @@ type Settings struct {
 		// TODO: unused
 		MaxConnections int
 	}
-	// Network is the configuration for the Autonity (or Ethereum) network
+	// Network is the configuration for an Ethereum compatible network
 	Network struct {
 		// RPCEndpoint is the URL of the RPC endpoint
 		RPCEndpoint string

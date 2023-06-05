@@ -47,7 +47,7 @@ func main() {
 	// rootCmd represents the base command when called without any subcommands
 	var rootCmd = &cobra.Command{
 		Use:   "authex",
-		Short: "Autonity Hybrid Exchange Server",
+		Short: "Ethereum Exchange Server",
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&options.DB.URI, "database-uri", "d", "postgres://app:app@localhost:5432/authex", "Database URI")
