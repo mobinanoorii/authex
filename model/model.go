@@ -42,10 +42,6 @@ type Settings struct {
 		Password string
 		// AccessContractAddress is the address of the access control contract
 		AccessContractAddress string
-		// TokenAddress is the address of the token contract (ERC20)
-		// this is monitored to check for incoming deposits
-		// TODO: this should be a property of the market
-		TokenAddress string
 	}
 	// Web is the configuration for the web server
 	Web struct {
@@ -61,8 +57,38 @@ type Settings struct {
 }
 
 type SignedMessage interface {
+	// Signature is the signature of the order
 	GetSignature() ([]byte, error)
-	GetMessageData() ([]byte, error)
+	// From is the address of the client, populated by the server
+	GetData() ([]byte, error)
+	// GetFrom returns the address of the client
+	GetFrom() string
+	// SetFrom sets the address of the client
+	SetFrom(address string)
+}
+
+type SignedRequest struct {
+	// Signature is the signature of the order
+	Signature string `json:"signature,omitempty"`
+	// From is the address of the client, populated by the server
+	From string `json:"-"`
+}
+
+func (r SignedRequest) GetSignature() ([]byte, error) {
+	return hex.DecodeString(r.Signature)
+}
+
+func (r SignedRequest) GetData() ([]byte, error) {
+	// serialize the order
+	return json.Marshal(map[string]struct{}{})
+}
+
+func (r SignedRequest) SetFrom(address string) {
+	r.From = address
+}
+
+func (r SignedRequest) GetFrom() string {
+	return r.From
 }
 
 const (
@@ -80,10 +106,7 @@ const (
 // to extract the client public key, calculate the client address and verify
 // that it's part of the games
 type OrderRequest struct {
-	// Signature is the signature of the order
-	Signature string `json:"signature,omitempty"`
-	// From is the address of the client, populated by the server
-	From string `json:"-"`
+	SignedRequest
 	// Order is the order itself
 	Order Order `json:"order,omitempty"`
 }
@@ -105,10 +128,6 @@ type Order struct {
 	Price string `json:"price,omitempty"`
 	// Side is the side of the order, either "bid" or "ask"
 	Side string `json:"side,omitempty"`
-}
-
-func (or OrderRequest) GetSignature() ([]byte, error) {
-	return hex.DecodeString(or.Signature)
 }
 
 func (or OrderRequest) GetMessageData() ([]byte, error) {
@@ -145,4 +164,33 @@ func NewMatch(o *OrderRequest, ids []string, prices []decimal.Decimal) *Match {
 		IDs:          ids,
 		Prices:       prices,
 	}
+}
+
+type Market struct {
+	// BaseSymbol is the base currency of the market
+	BaseSymbol string `json:"base,omitempty"`
+	// BaseAddress is the ERC20 address of the base currency
+	// if empty, it's assumed to be an off-chain asset
+	BaseAddress string `json:"base_address,omitempty"`
+	// QuoteSymbol is the quote currency of the market
+	// if empty, it's assumed to be an off-chain asset
+	QuoteSymbol string `json:"quote,omitempty"`
+	// QuoteAddress is the ERC20 address of the quote currency
+	QuoteAddress string `json:"quote_address,omitempty"`
+}
+
+func (m Market) String() string {
+	return fmt.Sprintf("%s/%s", m.BaseSymbol, m.QuoteSymbol)
+}
+
+// CreateMarketRequest is the request to create a new market
+type CreateMarketRequest struct {
+	SignedRequest
+	// Market is the market to create
+	Market Market `json:"market,omitempty"`
+}
+
+func (r CreateMarketRequest) GetMessageData() ([]byte, error) {
+	// serialize the order
+	return json.Marshal(r.Market)
 }

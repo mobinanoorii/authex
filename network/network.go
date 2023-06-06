@@ -20,7 +20,6 @@ type NodeClient struct {
 	wsClient *ethclient.Client
 	// contracts
 	accessControl *abi.AccessControl
-	token         *abi.ERC20
 }
 
 func NewNodeClient(settings *model.Settings) (*NodeClient, error) {
@@ -47,20 +46,12 @@ func NewNodeClient(settings *model.Settings) (*NodeClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	// get the erc20 contract
-	address = common.HexToAddress(settings.Identity.TokenAddress)
-	erc20, err := abi.NewERC20(address, client)
-	if err != nil {
-		return nil, err
-	}
 
 	return &NodeClient{
-		keystore: ks,
-		client:   client,
-		signer:   ks.Accounts()[0],
-		// contracts
+		keystore:      ks,
+		client:        client,
+		signer:        ks.Accounts()[0],
 		accessControl: ac,
-		token:         erc20,
 	}, nil
 }
 

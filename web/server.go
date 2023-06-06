@@ -81,6 +81,14 @@ func NewAuthexServer(opts *model.Settings, orders chan *model.OrderRequest, node
 			Help:    "Pause the CLOB, no new orders will be accepted",
 		},
 		{
+			// register a new market
+			Name:    "register",
+			Path:    "/markets",
+			Method:  POST,
+			Handler: r.registerMarket,
+			Help:    "Register a new market",
+		},
+		{
 
 			Name:    "Post order",
 			Path:    "/orders",
@@ -143,13 +151,13 @@ func (r AuthexServer) Start() error {
 // https://goethereumbook.org/signature-verify/
 // // TODO: the signature verification may be weak since tbe messages can be replayed
 // probably would be good to require a time stamp in the message and verify that is not older than a few seconds
-func extractAddress(msg *model.OrderRequest) (err error) {
+func extractAddress(msg model.SignedMessage) (err error) {
 	signature, err := msg.GetSignature()
 	if err != nil {
 		return
 	}
 	// serialize the msg
-	msgData, err := msg.GetMessageData()
+	msgData, err := msg.GetData()
 	if err != nil {
 		return
 	}
@@ -159,29 +167,45 @@ func extractAddress(msg *model.OrderRequest) (err error) {
 	if err != nil {
 		return
 	}
-	msg.From = crypto.PubkeyToAddress(*sigPublicKeyECDSA).Hex()
+	msg.SetFrom(crypto.PubkeyToAddress(*sigPublicKeyECDSA).Hex())
 	return
 }
 
-func authorize(msg *model.OrderRequest) (err error) {
+func authorize(msg model.SignedMessage) (err error) {
 	// verify the signature
 	if err = extractAddress(msg); err != nil {
 		return
 	}
-	if active, found := participants[msg.From]; !found || !active {
-		err = fmt.Errorf("account %s is not authorized", msg.From)
+	if active, found := participants[msg.GetFrom()]; !found || !active {
+		err = fmt.Errorf("account %s is not authorized", msg.GetFrom())
 		return
-	}
-	// verify that is not older than a few seconds
-	msg.Order.RecordedAt = time.Now().UTC()
-	if msg.Order.RecordedAt.Sub(msg.Order.SubmittedAt) > 2*time.Second {
-		err = fmt.Errorf("order is older than 2 seconds")
 	}
 	return
 }
 
 func (r AuthexServer) pause(c echo.Context) error {
 	// Only the admin can pause the CLOB
+	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
+}
+
+func (r AuthexServer) registerMarket(c echo.Context) error {
+	cmr := &model.CreateMarketRequest{}
+	if c.Bind(cmr) != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid market request"})
+	}
+	if err := extractAddress(cmr); err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+	isAdmin, err := r.nodeCli.IsAdmin(cmr.GetFrom())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if !isAdmin {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "only the admin can register a new market"})
+	}
+	// TODO: insert into the DB
+	// TODO: start listening for events
+	// Only the admin can register a new market
 	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
 }
 
@@ -195,6 +219,12 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 	}
 	if err := authorize(or); err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+	// verify that is not older than a few seconds
+	or.Order.RecordedAt = time.Now().UTC()
+	if or.Order.RecordedAt.Sub(or.Order.SubmittedAt) > 2*time.Second {
+		err := fmt.Errorf("order is older than 2 seconds")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	// populate the order ID and RecordedAt
 	or.Order.ID = uuid.New().String()
