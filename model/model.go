@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -193,4 +194,17 @@ type CreateMarketRequest struct {
 func (r CreateMarketRequest) GetMessageData() ([]byte, error) {
 	// serialize the order
 	return json.Marshal(r.Market)
+}
+
+type ERC20Transfer struct {
+	// From is the address of the sender
+	From string `json:"from,omitempty"`
+	// To is the address of the receiver
+	To string `json:"to,omitempty"`
+	// Amount is the amount of tokens to transfer
+	Amount *big.Int `json:"amount,omitempty"`
+	// BlockNumber is the block number of the transfer
+	BlockNumber uint64 `json:"block_number,omitempty"`
+	// TokenAddress is the address of the token
+	TokenAddress string `json:"token_address,omitempty"`
 }

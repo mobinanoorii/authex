@@ -14,24 +14,27 @@ import (
 var dbSchema string
 
 type Connection struct {
-	pool    *pgxpool.Pool
-	Matches chan *model.Match
+	pool      *pgxpool.Pool
+	Matches   chan *model.Match
+	Transfers chan *model.ERC20Transfer
 }
 
 // Close the connection and all channels
 func (c *Connection) Close() {
 	close(c.Matches)
+	close(c.Transfers)
 	c.pool.Close()
 }
 
-func NewConnection(dbUrl string) (*Connection, error) {
-	pool, err := pgxpool.New(context.Background(), dbUrl)
+func NewConnection(options *model.Settings) (*Connection, error) {
+	pool, err := pgxpool.New(context.Background(), options.DB.URI)
 	if err != nil {
 		return nil, err
 	}
 	return &Connection{
-		pool:    pool,
-		Matches: make(chan *model.Match),
+		pool:      pool,
+		Matches:   make(chan *model.Match),
+		Transfers: make(chan *model.ERC20Transfer),
 	}, nil
 }
 
@@ -58,8 +61,8 @@ func (c *Connection) handleMatch(m *model.Match) {
 }
 
 // Setup the database, open a connection and create the database schema
-func Setup(dbUrl string) error {
-	conn, err := pgx.Connect(context.Background(), dbUrl)
+func Setup(options *model.Settings) error {
+	conn, err := pgx.Connect(context.Background(), options.DB.URI)
 	if err != nil {
 		return err
 	}
@@ -95,6 +98,25 @@ func (c *Connection) SaveMarket(m *model.Market) error {
 		}
 	}
 	return nil
+}
+
+// GetTokenAddresses returns the list of tokens addresses currently in the database
+func (c *Connection) GetTokenAddresses() ([]string, error) {
+	rows, err := c.pool.Query(context.Background(), "SELECT address FROM tokens")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var addresses []string
+	for rows.Next() {
+		var address string
+		err = rows.Scan(&address)
+		if err != nil {
+			return nil, err
+		}
+		addresses = append(addresses, address)
+	}
+	return addresses, nil
 }
 
 // GetOrder returns an order from the database

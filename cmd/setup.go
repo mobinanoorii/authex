@@ -22,7 +22,7 @@ var setupCmd = &cobra.Command{
 func setup(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 	return func(_ *cobra.Command, _ []string) error {
 		// open the database connection
-		err := db.Setup(options.DB.URI)
+		err := db.Setup(options)
 		if err != nil {
 			log.Fatalf("error connecting to the database: %v", err)
 		}

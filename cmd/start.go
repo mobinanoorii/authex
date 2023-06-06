@@ -6,7 +6,7 @@ import (
 	"authex/model"
 	"authex/network"
 	"authex/web"
-	"log"
+	"fmt"
 
 	"github.com/spf13/cobra"
 )
@@ -23,11 +23,11 @@ var startCmd = &cobra.Command{
 
 // runFunction create the new resolver driver from the options and start the server.
 func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
-	return func(_ *cobra.Command, _ []string) error {
+	return func(_ *cobra.Command, _ []string) (err error) {
 		// open the database connection
-		db, err := db.NewConnection(options.DB.URI)
+		db, err := db.NewConnection(options)
 		if err != nil {
-			log.Fatalf("error connecting to the database: %v", err)
+			err = fmt.Errorf("error connecting to the database: %v", err)
 		}
 		go db.Run()
 
@@ -36,15 +36,26 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		go clob.Run()
 
 		// start the network client
-		nodeCli, err := network.NewNodeClient(options)
+		nodeCli, err := network.NewNodeClient(options, db.Transfers)
 		if err != nil {
-			log.Fatalf("error setting up the node client: %v", err)
+			err = fmt.Errorf("error setting up the node client: %v", err)
+			return
 		}
 		nodeCli.Run()
+		// get the token list and send them to the node client
+		tokens, err := db.GetTokenAddresses()
+		if err != nil {
+			err = fmt.Errorf("error getting the token list: %v", err)
+			return
+		}
+		for _, token := range tokens {
+			nodeCli.Tokens <- token
+		}
+
 		// finally start the server
 		authex, err := web.NewAuthexServer(options, clob.Inbound, nodeCli)
 		if err != nil {
-			return err
+			err = fmt.Errorf("error starting the server: %v", err)
 		}
 		return authex.Start()
 	}

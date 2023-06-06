@@ -8,21 +8,30 @@ import (
 	"os"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/labstack/gommon/log"
 )
 
 type NodeClient struct {
 	keystore *keystore.KeyStore
 	signer   accounts.Account
 	client   *ethclient.Client
-	wsClient *ethclient.Client
+	wsURL    string
 	// contracts
 	accessControl *abi.AccessControl
+	// when a new token need to be monitored is sent to this
+	// channel, the client will start monitoring it
+	Tokens chan string
+	// track the currently monitored tokens
+	monitoredTokens map[string]int
+	// channel to send monitored transfers
+	Transfers chan *model.ERC20Transfer
 }
 
-func NewNodeClient(settings *model.Settings) (*NodeClient, error) {
+func NewNodeClient(settings *model.Settings, transfers chan *model.ERC20Transfer) (*NodeClient, error) {
 	// check if the account has the admin privileges
 	client, err := ethclient.Dial(settings.Network.RPCEndpoint)
 	if err != nil {
@@ -50,22 +59,79 @@ func NewNodeClient(settings *model.Settings) (*NodeClient, error) {
 	return &NodeClient{
 		keystore:      ks,
 		client:        client,
+		wsURL:         settings.Network.WSEndpoint,
 		signer:        ks.Accounts()[0],
 		accessControl: ac,
+		Tokens:        make(chan string),
+		Transfers:     transfers,
 	}, nil
 }
 
 // Listen listen for network events and update balances
 func (p *NodeClient) Run() {
-	// for {
-	// 	select {
-	// 	case order := <-p.Inbound:
-	// 		p.handleOrder(order)
-	// 	default:
-	// 		// channel is closed
-	// 		return
-	// 	}
-	// }
+
+	monitors := 0
+	for {
+		select {
+		case token := <-p.Tokens:
+			monitors++
+			log.Infof("received token to monitor: %s", token)
+			// check if the token is already monitored
+			if _, ok := p.monitoredTokens[token]; ok {
+				log.Infof("token already monitored: %s", token)
+				continue
+			}
+			// start monitoring the token
+			go p.monitorToken(token, monitors)
+			p.monitoredTokens[token] = monitors
+		default:
+			// channel is closed
+			return
+		}
+	}
+}
+
+// monitorToken listen to transfer events for the given erc20 token
+func (nc *NodeClient) monitorToken(address string, monitorID int) {
+	client, err := ethclient.Dial(nc.wsURL)
+	if err != nil {
+		log.Errorf("[monitor: %d] websocket connection: %v", monitorID, err)
+		return
+	}
+	contractAddress := common.HexToAddress(address)
+	logs := make(chan *abi.ERC20Transfer)
+
+	erc20, err := abi.NewERC20(contractAddress, client)
+	if err != nil {
+		log.Errorf("[monitor: %d] erc20 contract: %v", monitorID, err)
+		return
+	}
+
+	sub, err := erc20.WatchTransfer(&bind.WatchOpts{}, logs, nil, nil)
+	defer sub.Unsubscribe()
+
+	if err != nil {
+		log.Errorf("[monitor: %d] logs subscription filter: %v", monitorID, err)
+		return
+	}
+
+	for {
+		select {
+		case err := <-sub.Err():
+			log.Errorf("[monitor: %d] log: %v", monitorID, err)
+		case t := <-logs:
+
+			log.Infof("[monitor: %d] transfer: %v", monitorID, t)
+			// send the transfer to the channel
+			nc.Transfers <- &model.ERC20Transfer{
+				From:         t.From.Hex(),
+				To:           t.To.Hex(),
+				Amount:       t.Value,
+				TokenAddress: address,
+				BlockNumber:  t.Raw.BlockNumber,
+			}
+		}
+	}
 }
 
 // GetSigner return the address of the signer account for this server instance
@@ -89,7 +155,7 @@ func Setup(settings *model.Settings) error {
 		return err
 	}
 
-	nc, err := NewNodeClient(settings)
+	nc, err := NewNodeClient(settings, nil)
 	if err != nil {
 		return err
 	}

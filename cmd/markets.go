@@ -58,7 +58,7 @@ func registerMarket(options *model.Settings) func(_ *cobra.Command, _ []string) 
 			m.QuoteAddress = quote[1]
 		}
 		// open the database connection
-		db, err := db.NewConnection(options.DB.URI)
+		db, err := db.NewConnection(options)
 		if err != nil {
 			err = fmt.Errorf("error connecting to the database: %v", err)
 			return
