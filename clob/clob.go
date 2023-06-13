@@ -14,7 +14,7 @@ type Pool struct {
 	// account balances, indexed by address and symbol
 	balances map[string]map[string]decimal.Decimal
 	// incoming orders
-	Inbound chan *model.OrderRequest
+	Inbound chan *model.SignedRequest[model.Order]
 	// order matches
 	Matches chan *model.Match
 }
@@ -23,7 +23,7 @@ func NewPool(matches chan *model.Match) *Pool {
 	return &Pool{
 		markets:  make(map[string]*ob.OrderBook),
 		balances: make(map[string]map[string]decimal.Decimal),
-		Inbound:  make(chan *model.OrderRequest),
+		Inbound:  make(chan *model.SignedRequest[model.Order]),
 		Matches:  matches,
 	}
 }
@@ -40,27 +40,27 @@ func (p *Pool) Run() {
 	}
 }
 
-func (p *Pool) handleOrder(r *model.OrderRequest) {
+func (p *Pool) handleOrder(r *model.SignedRequest[model.Order]) {
 	// get the order book for the symbol
-	orderBook, ok := p.markets[r.Order.Market]
+	orderBook, ok := p.markets[r.Payload.Market]
 	if !ok {
 		orderBook = ob.NewOrderBook()
-		p.markets[r.Order.Market] = orderBook
+		p.markets[r.Payload.Market] = orderBook
 	}
 	// NOW UPDATE THE DATABASE
 
 	// if it is a cancel order, cancel it
-	if r.Order.Side == model.CancelOrder {
-		orderBook.CancelOrder(r.Order.ID)
+	if r.Payload.Side == model.CancelOrder {
+		orderBook.CancelOrder(r.Payload.ID)
 		return
 	}
 	// check the side
 	side := ob.Buy
-	if r.Order.Side == model.SideAsk {
+	if r.Payload.Side == model.SideAsk {
 		side = ob.Sell
 	}
-	quantity := decimal.NewFromInt(int64(r.Order.Size))
-	price, err := decimal.NewFromString(r.Order.Price)
+	quantity := decimal.NewFromInt(int64(r.Payload.Size))
+	price, err := decimal.NewFromString(r.Payload.Price)
 	if err != nil {
 		log.Error(err)
 		return
@@ -69,7 +69,7 @@ func (p *Pool) handleOrder(r *model.OrderRequest) {
 		done    []*ob.Order
 		partial *ob.Order
 	)
-	if r.Order.Price == "" {
+	if r.Payload.Price == "" {
 		// limit order
 		if done, partial, _, _, err = orderBook.ProcessMarketOrder(side, quantity); err != nil {
 			log.Error(err)
@@ -77,7 +77,7 @@ func (p *Pool) handleOrder(r *model.OrderRequest) {
 		}
 	} else {
 		// market order
-		if done, partial, _, err = orderBook.ProcessLimitOrder(side, r.Order.ID, quantity, price); err != nil {
+		if done, partial, _, err = orderBook.ProcessLimitOrder(side, r.Payload.ID, quantity, price); err != nil {
 			log.Error(err)
 			return
 		}
@@ -85,7 +85,7 @@ func (p *Pool) handleOrder(r *model.OrderRequest) {
 	go p.ProcessMatches(r, done, partial)
 }
 
-func (p *Pool) ProcessMatches(r *model.OrderRequest, done []*ob.Order, partial *ob.Order) {
+func (p *Pool) ProcessMatches(r *model.SignedRequest[model.Order] , done []*ob.Order, partial *ob.Order) {
 	// for _, order := range done {
 	// 	p.Matches <- model.NewMatch(r, order.ID(), order.Price())
 	// }

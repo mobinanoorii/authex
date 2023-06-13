@@ -28,6 +28,7 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		db, err := db.NewConnection(options)
 		if err != nil {
 			err = fmt.Errorf("error connecting to the database: %v", err)
+			return
 		}
 		go db.Run()
 
@@ -41,7 +42,7 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 			err = fmt.Errorf("error setting up the node client: %v", err)
 			return
 		}
-		nodeCli.Run()
+		go nodeCli.Run()
 		// get the token list and send them to the node client
 		tokens, err := db.GetTokenAddresses()
 		if err != nil {
@@ -53,9 +54,10 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		}
 
 		// finally start the server
-		authex, err := web.NewAuthexServer(options, clob.Inbound, nodeCli)
+		authex, err := web.NewAuthexServer(options, clob, nodeCli, db)
 		if err != nil {
 			err = fmt.Errorf("error starting the server: %v", err)
+			return
 		}
 		return authex.Start()
 	}

@@ -1,10 +1,11 @@
 package network
 
 import (
+	"authex/helpers"
 	"authex/model"
 	"authex/network/abi"
-	_ "embed"
 	"fmt"
+	"math/big"
 	"os"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -15,6 +16,7 @@ import (
 	"github.com/labstack/gommon/log"
 )
 
+// NodeClient is the client to interact with the ethereum node
 type NodeClient struct {
 	keystore *keystore.KeyStore
 	signer   accounts.Account
@@ -28,10 +30,11 @@ type NodeClient struct {
 	// track the currently monitored tokens
 	monitoredTokens map[string]int
 	// channel to send monitored transfers
-	Transfers chan *model.ERC20Transfer
+	Transfers chan *model.BalanceChange
 }
 
-func NewNodeClient(settings *model.Settings, transfers chan *model.ERC20Transfer) (*NodeClient, error) {
+// NewNodeClient create a new node client
+func NewNodeClient(settings *model.Settings, transfers chan *model.BalanceChange) (*NodeClient, error) {
 	// check if the account has the admin privileges
 	client, err := ethclient.Dial(settings.Network.RPCEndpoint)
 	if err != nil {
@@ -57,43 +60,46 @@ func NewNodeClient(settings *model.Settings, transfers chan *model.ERC20Transfer
 	}
 
 	return &NodeClient{
-		keystore:      ks,
-		client:        client,
-		wsURL:         settings.Network.WSEndpoint,
-		signer:        ks.Accounts()[0],
-		accessControl: ac,
-		Tokens:        make(chan string),
-		Transfers:     transfers,
+		keystore:        ks,
+		client:          client,
+		wsURL:           settings.Network.WSEndpoint,
+		signer:          ks.Accounts()[0],
+		accessControl:   ac,
+		monitoredTokens: map[string]int{},
+		Tokens:          make(chan string),
+		Transfers:       transfers,
 	}, nil
 }
 
-// Listen listen for network events and update balances
-func (p *NodeClient) Run() {
+// Run begin listening for network events
+func (n *NodeClient) Run() {
 
 	monitors := 0
 	for {
 		select {
-		case token := <-p.Tokens:
+		case token, ok := <-n.Tokens:
+			if !ok {
+				log.Infof("token monitor channel closed")
+			}
 			monitors++
 			log.Infof("received token to monitor: %s", token)
 			// check if the token is already monitored
-			if _, ok := p.monitoredTokens[token]; ok {
+			if _, ok := n.monitoredTokens[token]; ok {
 				log.Infof("token already monitored: %s", token)
 				continue
 			}
 			// start monitoring the token
-			go p.monitorToken(token, monitors)
-			p.monitoredTokens[token] = monitors
-		default:
-			// channel is closed
-			return
+			go n.monitorToken(token, monitors)
+			n.monitoredTokens[token] = monitors
 		}
 	}
 }
 
 // monitorToken listen to transfer events for the given erc20 token
-func (nc *NodeClient) monitorToken(address string, monitorID int) {
-	client, err := ethclient.Dial(nc.wsURL)
+// to and from the CLOB address. This way the CLOB can track balance changes
+// of the users
+func (n *NodeClient) monitorToken(address string, monitorID int) {
+	client, err := ethclient.Dial(n.wsURL)
 	if err != nil {
 		log.Errorf("[monitor: %d] websocket connection: %v", monitorID, err)
 		return
@@ -106,6 +112,8 @@ func (nc *NodeClient) monitorToken(address string, monitorID int) {
 		log.Errorf("[monitor: %d] erc20 contract: %v", monitorID, err)
 		return
 	}
+
+	// REMEMBER! this is the balance on the CLOB, not of the wallet
 
 	sub, err := erc20.WatchTransfer(&bind.WatchOpts{}, logs, nil, nil)
 	defer sub.Unsubscribe()
@@ -122,29 +130,67 @@ func (nc *NodeClient) monitorToken(address string, monitorID int) {
 		case t := <-logs:
 
 			log.Infof("[monitor: %d] transfer: %v", monitorID, t)
-			// send the transfer to the channel
-			nc.Transfers <- &model.ERC20Transfer{
-				From:         t.From.Hex(),
-				To:           t.To.Hex(),
-				Amount:       t.Value,
+			if helpers.IsZeroAddress(t.From) {
+				continue
+			}
+			if helpers.IsZeroAddress(t.To) {
+				continue
+			}
+
+			var deltas []*model.BalanceDelta
+			if t.From.Hex() == n.signer.Address.Hex() {
+				// it's a withdrawal
+				deltas = append(deltas, model.NewBalanceDelta(t.From.Hex(), t.Value.Neg(t.Value)))
+			} else {
+				// is a deposit
+				deltas = append(deltas, model.NewBalanceDelta(t.To.Hex(), t.Value))
+			}
+			n.Transfers <- &model.BalanceChange{
 				TokenAddress: address,
 				BlockNumber:  t.Raw.BlockNumber,
+				Deltas:       deltas,
 			}
 		}
 	}
 }
 
 // GetSigner return the address of the signer account for this server instance
-func (nc *NodeClient) GetSigner() string {
-	return nc.signer.Address.Hex()
+func (n *NodeClient) GetSigner() string {
+	return n.signer.Address.Hex()
 }
 
-func (nc *NodeClient) IsAdmin(address string) (bool, error) {
-	role, err := nc.accessControl.DEFAULTADMINROLE(nil)
+// IsERC20 check if the given address is an ERC20 token
+func (n *NodeClient) IsERC20(address string) (bool, error) {
+	contractAddress := common.HexToAddress(address)
+	erc20, err := abi.NewERC20(contractAddress, n.client)
 	if err != nil {
 		return false, err
 	}
-	return nc.accessControl.HasRole(nil, role, common.HexToAddress(address))
+	return erc20 != nil, nil
+}
+
+// IsAdmin check if the given address is admin
+// an address is admin if it has the DEFAULTADMINROLE role in the access control contract
+func (n *NodeClient) IsAdmin(address string) (bool, error) {
+	role, err := n.accessControl.DEFAULTADMINROLE(nil)
+	if err != nil {
+		return false, err
+	}
+	return n.accessControl.HasRole(nil, role, common.HexToAddress(address))
+}
+
+// ExecuteWithdraw transfer the given amount of tokens to the given address
+func (n *NodeClient) ExecuteWithdraw(tokenAddress string, amount *big.Int, to string) (string, error) {
+	contractAddress := common.HexToAddress(tokenAddress)
+	erc20, err := abi.NewERC20(contractAddress, n.client)
+	if err != nil {
+		return "", err
+	}
+	tx, err := erc20.Transfer(&bind.TransactOpts{}, common.HexToAddress(to), amount)
+	if err != nil {
+		return "", err
+	}
+	return tx.Hash().Hex(), nil
 }
 
 // Setup import the keyfile in the local keystore and return the address
@@ -170,11 +216,3 @@ func Setup(settings *model.Settings) error {
 	}
 	return nil
 }
-
-/*
-
-bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
-function hasRole(bytes32 role, address account) public view virtual override returns (bool) {
-    return _roles[role].members[account];
-}
-*/

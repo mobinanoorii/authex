@@ -3,12 +3,16 @@ package web
 import (
 	"bytes"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"time"
 
+	"authex/clob"
+	"authex/db"
+	"authex/helpers"
 	"authex/model"
 	"authex/network"
 
@@ -22,16 +26,19 @@ import (
 //go:embed index.html
 var indexHTML string
 
+// AuthexServer is the main server for the CLOB
 type AuthexServer struct {
 	opts          *model.Settings
 	echo          *echo.Echo
 	runtime       *Runtime
 	endpoints     []RestEndpoint
 	indexTemplate *template.Template
-	orders        chan *model.OrderRequest
+	clobCli       *clob.Pool
 	nodeCli       *network.NodeClient
+	dbCli         *db.Connection
 }
 
+// RestEndpoint is a REST endpoint
 type RestEndpoint struct {
 	Name    string
 	Method  string
@@ -40,18 +47,21 @@ type RestEndpoint struct {
 	Handler func(c echo.Context) error
 }
 
+// Http Methods constants
 const (
 	GET  string = "GET"
 	POST string = "POST"
 )
 
-func NewAuthexServer(opts *model.Settings, orders chan *model.OrderRequest, nodeCli *network.NodeClient) (AuthexServer, error) {
+// NewAuthexServer creates a new CLOB server
+func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.NodeClient, dbCli *db.Connection) (AuthexServer, error) {
 	var err error
 
 	r := AuthexServer{
 		opts:    opts,
-		orders:  orders,
+		clobCli: clobCli,
 		nodeCli: nodeCli,
+		dbCli:   dbCli,
 	}
 	r.echo = echo.New()
 	r.echo.HideBanner = true
@@ -142,6 +152,7 @@ func NewAuthexServer(opts *model.Settings, orders chan *model.OrderRequest, node
 	return r, nil
 }
 
+// Start the server
 func (r AuthexServer) Start() error {
 	r.echo.Logger.Infof("listening on %s", r.opts.Web.ListenAddr)
 	return r.echo.Start(r.opts.Web.ListenAddr)
@@ -151,33 +162,30 @@ func (r AuthexServer) Start() error {
 // https://goethereumbook.org/signature-verify/
 // // TODO: the signature verification may be weak since tbe messages can be replayed
 // probably would be good to require a time stamp in the message and verify that is not older than a few seconds
-func extractAddress(msg model.SignedMessage) (err error) {
-	signature, err := msg.GetSignature()
+func extractAddress(signature string, payload model.Serializable) (address string, err error) {
+	sigBytes, err := hex.DecodeString(signature)
 	if err != nil {
 		return
 	}
 	// serialize the msg
-	msgData, err := msg.GetData()
+	msgData, err := payload.Serialize()
 	if err != nil {
 		return
 	}
 	// verify the signature
 	hash := crypto.Keccak256Hash(msgData)
-	sigPublicKeyECDSA, err := crypto.SigToPub(hash.Bytes(), signature)
+	sigPublicKeyECDSA, err := crypto.SigToPub(hash.Bytes(), sigBytes)
 	if err != nil {
 		return
+
 	}
-	msg.SetFrom(crypto.PubkeyToAddress(*sigPublicKeyECDSA).Hex())
+	address = crypto.PubkeyToAddress(*sigPublicKeyECDSA).Hex()
 	return
 }
 
-func authorize(msg model.SignedMessage) (err error) {
-	// verify the signature
-	if err = extractAddress(msg); err != nil {
-		return
-	}
-	if active, found := participants[msg.GetFrom()]; !found || !active {
-		err = fmt.Errorf("account %s is not authorized", msg.GetFrom())
+func isAuthorized(address string) (err error) {
+	if active, found := participants[address]; !found || !active {
+		err = fmt.Errorf("account %s is not authorized", address)
 		return
 	}
 	return
@@ -189,67 +197,123 @@ func (r AuthexServer) pause(c echo.Context) error {
 }
 
 func (r AuthexServer) registerMarket(c echo.Context) error {
-	cmr := &model.CreateMarketRequest{}
+	cmr := &model.SignedRequest[model.Market]{}
 	if c.Bind(cmr) != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid market request"})
 	}
-	if err := extractAddress(cmr); err != nil {
+	sender, err := extractAddress(cmr.Signature, cmr.Payload)
+	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
-	isAdmin, err := r.nodeCli.IsAdmin(cmr.GetFrom())
+	isAdmin, err := r.nodeCli.IsAdmin(sender)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	if !isAdmin {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "only the admin can register a new market"})
 	}
-	// TODO: insert into the DB
-	// TODO: start listening for events
+
+	// helper function to parse a token
+	parseToken := func(symbol string, address string) (token *model.Token, err error) {
+		if helpers.IsEmpty(cmr.Payload.BaseSymbol) || helpers.IsEmpty(cmr.Payload.QuoteSymbol) {
+			err = fmt.Errorf("missing base or quote symbol")
+			return
+		}
+		// set the base and quote tokens
+		token = model.NewOffChainAsset(cmr.Payload.BaseSymbol)
+		if !helpers.IsEmpty(cmr.Payload.BaseAddress) {
+			token = model.NewERC20Token(cmr.Payload.BaseSymbol, cmr.Payload.BaseAddress)
+			isERC20, errERC := r.nodeCli.IsERC20(token.Address)
+			if errERC != nil {
+				err = fmt.Errorf("error checking if %s is an ERC20 token: %s", token.Address, errERC.Error())
+				return
+			}
+			if !isERC20 {
+				err = fmt.Errorf("%s is not an ERC20 token", token.Address)
+				return
+			}
+		}
+		return
+	}
+
+	// set the base and quote tokens
+	base, err := parseToken(cmr.Payload.BaseSymbol, cmr.Payload.BaseAddress)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	quote, err := parseToken(cmr.Payload.QuoteSymbol, cmr.Payload.QuoteAddress)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	// compute the market ID
+	marketID := helpers.ComputeMarketID(base.Address, quote.Address)
+	if err := r.dbCli.SaveMarket(marketID, base, quote); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// start listening
+	if base.IsERC20() {
+		r.nodeCli.Tokens <- base.Address
+	}
+	if quote.IsERC20() {
+		r.nodeCli.Tokens <- quote.Address
+	}
 	// Only the admin can register a new market
-	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
+	return c.JSON(http.StatusOK, map[string]string{"id": marketID})
 }
 
 // postOrder submits a new order to the CLOB
 // it is required that the order is signed by the account
 // the fields ID and RecordedAt are overwritten by the server
 func (r AuthexServer) postOrder(c echo.Context) error {
-	or := &model.OrderRequest{}
+	or := &model.SignedRequest[model.Order]{}
 	if c.Bind(or) != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid order request"})
 	}
-	if err := authorize(or); err != nil {
+	// extract the address from the signature
+	sender, err := extractAddress(or.Signature, or.Payload)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+	if err := isAuthorized(sender); err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 	// verify that is not older than a few seconds
-	or.Order.RecordedAt = time.Now().UTC()
-	if or.Order.RecordedAt.Sub(or.Order.SubmittedAt) > 2*time.Second {
+	or.Payload.RecordedAt = time.Now().UTC()
+	if or.Payload.RecordedAt.Sub(or.Payload.SubmittedAt) > 2*time.Second {
 		err := fmt.Errorf("order is older than 2 seconds")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	// populate the order ID and RecordedAt
-	or.Order.ID = uuid.New().String()
+	or.Payload.ID = uuid.New().String()
 	// validate the order
-	if err := or.Validate(); err != nil {
+	if err := or.Payload.Validate(); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	// TODO: shortcut hardcode the market
 	// queue the order for processing
-	r.orders <- or
+	r.clobCli.Inbound <- or
 	// reply with the order
-	return c.JSON(http.StatusOK, map[string]any{"status": "ok", "order": or.Order})
+	return c.JSON(http.StatusOK, map[string]any{"status": "ok", "order": or.Payload})
 }
 
 func (r AuthexServer) cancelOrder(c echo.Context) error {
-	or := &model.OrderRequest{}
+	or := &model.SignedRequest[model.Order]{}
 	if c.Bind(or) != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid order request"})
 	}
-	if err := authorize(or); err != nil {
+	// extract the address from the signature
+	sender, err := extractAddress(or.Signature, or.Payload)
+	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
-	or.Order.Side = model.CancelOrder
+	if err := isAuthorized(sender); err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+	or.Payload.Side = model.CancelOrder
 	// queue the order for processing
-	r.orders <- or
+	r.clobCli.Inbound <- or
 	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
 }
 

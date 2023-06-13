@@ -12,6 +12,7 @@ require (
 	github.com/shopspring/decimal v1.3.1
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
+	golang.org/x/term v0.8.0
 )
 
 require (

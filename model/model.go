@@ -1,13 +1,21 @@
 package model
 
 import (
+	"authex/helpers"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
+)
+
+// Asset is the asset type
+const (
+	AssetOffChain = "offchain"
+	AssetERC20    = "erc20"
 )
 
 // Settings is the global configuration
@@ -57,39 +65,20 @@ type Settings struct {
 	}
 }
 
-type SignedMessage interface {
-	// Signature is the signature of the order
-	GetSignature() ([]byte, error)
-	// From is the address of the client, populated by the server
-	GetData() ([]byte, error)
-	// GetFrom returns the address of the client
-	GetFrom() string
-	// SetFrom sets the address of the client
-	SetFrom(address string)
-}
-
-type SignedRequest struct {
-	// Signature is the signature of the order
+// SignedRequest is a generic request with a signature
+type SignedRequest[T Serializable] struct {
 	Signature string `json:"signature,omitempty"`
-	// From is the address of the client, populated by the server
-	From string `json:"-"`
+	From      string `json:"-"`
+	Payload   T      `json:"payload,omitempty"`
 }
 
-func (r SignedRequest) GetSignature() ([]byte, error) {
+// SignatureBytes returns the signature bytes
+func (r *SignedRequest[T]) SignatureBytes() ([]byte, error) {
 	return hex.DecodeString(r.Signature)
 }
 
-func (r SignedRequest) GetData() ([]byte, error) {
-	// serialize the order
-	return json.Marshal(map[string]struct{}{})
-}
-
-func (r SignedRequest) SetFrom(address string) {
-	r.From = address
-}
-
-func (r SignedRequest) GetFrom() string {
-	return r.From
+type Serializable interface {
+	Serialize() ([]byte, error)
 }
 
 const (
@@ -100,17 +89,6 @@ const (
 	// CancelOrder is used in internally as side to cancel an order
 	CancelOrder string = "del"
 )
-
-// OrderRequest is the request to place an order
-// it contains the signature of the order and the order itself
-// The order is signed by the client and the signature is used by the server
-// to extract the client public key, calculate the client address and verify
-// that it's part of the games
-type OrderRequest struct {
-	SignedRequest
-	// Order is the order itself
-	Order Order `json:"order,omitempty"`
-}
 
 // Order is the CLOB order
 type Order struct {
@@ -131,22 +109,21 @@ type Order struct {
 	Side string `json:"side,omitempty"`
 }
 
-func (or OrderRequest) GetMessageData() ([]byte, error) {
-	// serialize the order
-	return json.Marshal(or.Order)
+func (o Order) Serialize() ([]byte, error) {
+	return json.Marshal(o)
 }
 
-func (or OrderRequest) Validate() error {
-	if or.Order.Market == "" {
+func (o Order) Validate() error {
+	if o.Market == "" {
 		return fmt.Errorf("market must be set")
 	}
-	if or.Order.Side != SideBid && or.Order.Side != SideAsk {
-		return fmt.Errorf("side is either bid or ask, got %s", or.Order.Side)
+	if o.Side != SideBid && o.Side != SideAsk {
+		return fmt.Errorf("side is either bid or ask, got %s", o.Side)
 	}
-	if or.Order.Size <= 0 {
-		return fmt.Errorf("size must be positive, got %d", or.Order.Size)
+	if o.Size <= 0 {
+		return fmt.Errorf("size must be positive, got %d", o.Size)
 	}
-	if or.Order.ID != "" {
+	if o.ID != "" {
 		return fmt.Errorf("the order ID must not be set as it's assigned by the exchange")
 	}
 	return nil
@@ -154,19 +131,69 @@ func (or OrderRequest) Validate() error {
 
 // Match is the result of a match between two orders
 type Match struct {
-	OrderRequest *OrderRequest     `json:"order_request,omitempty"`
-	IDs          []string          `json:"id,omitempty"`
-	Prices       []decimal.Decimal `json:"price,omitempty"`
+	Request *SignedRequest[Order] `json:"order_request,omitempty"`
+	IDs     []string              `json:"id,omitempty"`
+	Prices  []decimal.Decimal     `json:"price,omitempty"`
 }
 
-func NewMatch(o *OrderRequest, ids []string, prices []decimal.Decimal) *Match {
+func NewMatch(o *SignedRequest[Order], ids []string, prices []decimal.Decimal) *Match {
 	return &Match{
-		OrderRequest: o,
-		IDs:          ids,
-		Prices:       prices,
+		Request: o,
+		IDs:     ids,
+		Prices:  prices,
 	}
 }
 
+// Token is the token of the exchange
+type Token struct {
+	// Symbol is the symbol of the token
+	Symbol string `json:"symbol,omitempty"`
+	// Address is the address of the token
+	// If the token is an ERC20 token, it's the address of the token contract
+	// If the token is an off-chain token, it's the hash of the token symbol
+	Address string `json:"address,omitempty"`
+	// AssetType is the type of the asset
+	// it will be either "erc20" or "offchain"
+	AssetType string `json:"asset_type,omitempty"`
+}
+
+func (t Token) String() string {
+	return fmt.Sprintf("%s:%s", t.Symbol, t.Address)
+}
+
+// IsERC20 returns true if the token is an ERC20 token
+func (t *Token) IsERC20() bool {
+	return t.AssetType == AssetERC20
+}
+
+// NewToken is a helper function to create a new token
+func NewToken(symbol, address string, assetType string) *Token {
+	return &Token{
+		Symbol:    symbol,
+		Address:   address,
+		AssetType: assetType,
+	}
+}
+
+// NewERC20Token is a helper function to create a new ERC20 token
+func NewERC20Token(symbol, address string) *Token {
+	return &Token{
+		Symbol:    symbol,
+		Address:   address,
+		AssetType: AssetERC20,
+	}
+}
+
+// NewOffChainAsset is a helper function to create a new off-chain token
+func NewOffChainAsset(symbol string) *Token {
+	return &Token{
+		Symbol:    symbol,
+		Address:   helpers.AsAddress(strings.ToLower(symbol)),
+		AssetType: AssetOffChain,
+	}
+}
+
+// Market is the market of the exchange
 type Market struct {
 	// BaseSymbol is the base currency of the market
 	BaseSymbol string `json:"base,omitempty"`
@@ -184,27 +211,33 @@ func (m Market) String() string {
 	return fmt.Sprintf("%s/%s", m.BaseSymbol, m.QuoteSymbol)
 }
 
-// CreateMarketRequest is the request to create a new market
-type CreateMarketRequest struct {
-	SignedRequest
-	// Market is the market to create
-	Market Market `json:"market,omitempty"`
+func (m Market) Serialize() ([]byte, error) {
+	return json.Marshal(m)
 }
 
-func (r CreateMarketRequest) GetMessageData() ([]byte, error) {
-	// serialize the order
-	return json.Marshal(r.Market)
-}
-
-type ERC20Transfer struct {
-	// From is the address of the sender
-	From string `json:"from,omitempty"`
-	// To is the address of the receiver
-	To string `json:"to,omitempty"`
-	// Amount is the amount of tokens to transfer
+type BalanceDelta struct {
+	// Address is the address of the account
+	Address string `json:"address,omitempty"`
+	// Amount is the amount of the change
 	Amount *big.Int `json:"amount,omitempty"`
+}
+
+func (bd BalanceDelta) String() string {
+	return fmt.Sprintf("%s: %s", bd.Address, bd.Amount.String())
+}
+
+func NewBalanceDelta(address string, amount *big.Int) *BalanceDelta {
+	return &BalanceDelta{
+		Address: address,
+		Amount:  amount,
+	}
+}
+
+type BalanceChange struct {
 	// BlockNumber is the block number of the transfer
 	BlockNumber uint64 `json:"block_number,omitempty"`
 	// TokenAddress is the address of the token
 	TokenAddress string `json:"token_address,omitempty"`
+	// Balances lists the balance updates
+	Deltas []*BalanceDelta `json:"deltas,omitempty"`
 }
