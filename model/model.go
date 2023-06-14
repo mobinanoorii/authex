@@ -62,6 +62,8 @@ type Settings struct {
 		BurstLimit int
 		// Remember is the duration of time to remember a client
 		Remember time.Duration
+		// Permissioned if the system shall be closed to authorized accounts
+		Permissioned bool
 	}
 }
 

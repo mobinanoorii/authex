@@ -22,7 +22,7 @@ CREATE table if not exists "markets" (
 DROP table if exists "orders" CASCADE;
 CREATE table IF NOT EXISTS "orders" (
     "id" char(36) PRIMARY KEY,
-    "from_address" char(42) NOT NULL, 
+    "from_address" char(42) NOT NULL,
     "side" char(3) NOT NULL,
     "submitted_at" timestamp NOT NULL,
     "recorded_at" timestamp NOT NULL,
@@ -53,6 +53,12 @@ CREATE table if not exists "balances" (
     PRIMARY KEY ("address", "token_address")
 );
 
+
+DROP TABLE IF EXISTS "accounts" CASCADE;
+CREATE TABLE IF NOT EXISTS "accounts" (
+    "address" char(42) PRIMARY KEY,
+    "active" boolean NOT NULL DEFAULT true
+);
 
 
 

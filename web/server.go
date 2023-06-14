@@ -183,10 +183,12 @@ func extractAddress(signature string, payload model.Serializable) (address strin
 	return
 }
 
-func isAuthorized(address string) (err error) {
-	if active, found := participants[address]; !found || !active {
+func (r AuthexServer) isAuthorized(address string) (err error) {
+	if !r.opts.Web.Permissioned {
+		return nil
+	}
+	if is := r.dbCli.IsAuthorized(address); !is {
 		err = fmt.Errorf("account %s is not authorized", address)
-		return
 	}
 	return
 }
@@ -276,7 +278,7 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
-	if err := isAuthorized(sender); err != nil {
+	if err := r.isAuthorized(sender); err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 	// verify that is not older than a few seconds
@@ -308,7 +310,7 @@ func (r AuthexServer) cancelOrder(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
-	if err := isAuthorized(sender); err != nil {
+	if err := r.isAuthorized(sender); err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 	or.Payload.Side = model.CancelOrder

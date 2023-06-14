@@ -97,7 +97,6 @@ func (c *Connection) Run() {
 }
 
 func (c *Connection) handleMatch(m *model.Match) {
-
 	// NOW UPDATE THE DATABASE
 	_, err := c.pool.Exec(context.Background(), "INSERT INTO orders (id, symbol, side, price, size) VALUES ($1, $2, $3, $4, $5)",
 		m.Request.Payload.ID, m.Request.Payload.Market, m.Request.Payload.Side, m.Request.Payload.Price, m.Request.Payload.Size)
@@ -146,6 +145,13 @@ func (c *Connection) SaveMarket(marketID string, base, quote *model.Token) error
 	}
 	tx.Commit(context.Background())
 	return nil
+}
+
+func (c *Connection) IsAuthorized(address string) (active bool) {
+	if err := c.pool.QueryRow(context.Background(), "select active from accounts where address = $1", address).Scan(&active); err != nil {
+		active = false
+	}
+	return
 }
 
 // GetTokenAddresses returns the list of tokens addresses currently in the database

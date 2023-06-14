@@ -47,6 +47,7 @@ func Execute(v string) error {
 	rootCmd.PersistentFlags().StringVarP(&options.Identity.Password, "password", "p", "puravida", "Password for key file (or use env var 'KEYFILEPWD')")
 
 	rootCmd.PersistentFlags().StringVarP(&options.Web.ListenAddr, "listen-address", "l", "0.0.0.0:2306", "Address the REST server listen to (format host:port)")
+	rootCmd.PersistentFlags().BoolVar(&options.Web.Permissioned, "permissioned", false, "when the flag is set only authorized accounts are allowed to interact authex")
 	rootCmd.PersistentFlags().StringVarP(&options.Network.RPCEndpoint, "rpc-endpoint", "r", "https://rpc0.devnet.clearmatics.network:443/", "RPC endpoint (defaults to WEB3_ENDPOINT env var if set)")
 	rootCmd.PersistentFlags().StringVarP(&options.Network.WSEndpoint, "ws-endpoint", "w", "wss://rpc0.devnet.clearmatics.network/ws", "WS endpoint (defaults to WEB3_WS_ENDPOINT env var if set)")
 	rootCmd.PersistentFlags().StringVarP(&options.Network.ChainID, "chain-id", "I", "65110000", "The chain ID of the network to connect to")
