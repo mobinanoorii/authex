@@ -99,6 +99,30 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 			Help:    "Register a new market",
 		},
 		{
+			// register a new market
+			Name:    "register",
+			Path:    "/markets",
+			Method:  GET,
+			Handler: r.getMarkets,
+			Help:    "Get all markets",
+		},
+		{
+			// register a new market
+			Name:    "register",
+			Path:    "/markets/:address",
+			Method:  GET,
+			Handler: r.getMarketByAddress,
+			Help:    "Get a market by address",
+		},
+		{
+			// register a new market
+			Name:    "fund",
+			Path:    "/fund",
+			Method:  POST,
+			Handler: r.fund,
+			Help:    "Fund an account",
+		},
+		{
 
 			Name:    "Post order",
 			Path:    "/orders",
@@ -193,17 +217,8 @@ func (r AuthexServer) isAuthorized(address string) (err error) {
 	return
 }
 
-func (r AuthexServer) pause(c echo.Context) error {
-	// Only the admin can pause the CLOB
-	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
-}
-
-func (r AuthexServer) registerMarket(c echo.Context) error {
-	cmr := &model.SignedRequest[model.Market]{}
-	if c.Bind(cmr) != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid market request"})
-	}
-	sender, err := extractAddress(cmr.Signature, cmr.Payload)
+func (r AuthexServer) isAdmin(c echo.Context, signature string, payload model.Serializable) error {
+	sender, err := extractAddress(signature, payload)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -214,17 +229,34 @@ func (r AuthexServer) registerMarket(c echo.Context) error {
 	if !isAdmin {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "only the admin can register a new market"})
 	}
+	return nil
+}
+
+func (r AuthexServer) pause(c echo.Context) error {
+	// Only the admin can pause the CLOB
+	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
+}
+
+func (r AuthexServer) registerMarket(c echo.Context) error {
+	cmr := &model.SignedRequest[model.Market]{}
+	if c.Bind(cmr) != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid market request"})
+	}
+	// admin only
+	if err := r.isAdmin(c, cmr.Signature, cmr.Payload); err != nil {
+		return err
+	}
 
 	// helper function to parse a token
 	parseToken := func(symbol string, address string) (token *model.Token, err error) {
-		if helpers.IsEmpty(cmr.Payload.BaseSymbol) || helpers.IsEmpty(cmr.Payload.QuoteSymbol) {
+		if helpers.IsEmpty(symbol) {
 			err = fmt.Errorf("missing base or quote symbol")
 			return
 		}
 		// set the base and quote tokens
-		token = model.NewOffChainAsset(cmr.Payload.BaseSymbol)
-		if !helpers.IsEmpty(cmr.Payload.BaseAddress) {
-			token = model.NewERC20Token(cmr.Payload.BaseSymbol, cmr.Payload.BaseAddress)
+		token = model.NewOffChainAsset(symbol)
+		if !helpers.IsEmpty(address) {
+			token = model.NewERC20Token(symbol, address)
 			isERC20, errERC := r.nodeCli.IsERC20(token.Address)
 			if errERC != nil {
 				err = fmt.Errorf("error checking if %s is an ERC20 token: %s", token.Address, errERC.Error())
@@ -263,6 +295,54 @@ func (r AuthexServer) registerMarket(c echo.Context) error {
 	}
 	// Only the admin can register a new market
 	return c.JSON(http.StatusOK, map[string]string{"id": marketID})
+}
+
+// getMarket returns the market details for a given market address
+func (r AuthexServer) getMarketByAddress(c echo.Context) error {
+	// compute the market ID
+	marketID := c.Param("address")
+	m, err := r.dbCli.GetMarketByAddress(marketID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+	// TODO: add the market dept
+	return c.JSON(http.StatusOK, m)
+}
+
+// getMarkets returns the list of markets
+func (r AuthexServer) getMarkets(c echo.Context) error {
+	// compute the market ID
+	markets, err := r.dbCli.GetMarkets()
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, markets)
+}
+
+// fund adds funds to the an account
+func (r AuthexServer) fund(c echo.Context) error {
+	req := &model.SignedRequest[model.Funding]{}
+	if c.Bind(r) != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid market request"})
+	}
+	// admin only
+	if err := r.isAdmin(c, req.Signature, req.Payload); err != nil {
+		return err
+	}
+	// extract the address from the signature
+
+	amount, err := helpers.ParseAmount(req.Payload.Amount)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	bc := &model.BalanceChange{
+		TokenAddress: req.Payload.Asset,
+		Deltas: []*model.BalanceDelta{
+			model.NewBalanceDelta(req.Payload.Account, amount),
+		},
+	}
+	r.dbCli.Transfers <- bc
+	return c.JSON(http.StatusOK, map[string]string{"status": "scheduled"})
 }
 
 // postOrder submits a new order to the CLOB

@@ -2,6 +2,8 @@ package helpers
 
 import (
 	"encoding/hex"
+	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -48,4 +50,13 @@ func ComputeMarketID(baseAddress string, quoteAddress string) string {
 	}
 	h := crypto.Keccak256(market)
 	return "0x" + hex.EncodeToString(h[12:])
+}
+
+func ParseAmount(value string) (*big.Int, error) {
+	b, ok := new(big.Int).SetString(value, 10)
+	if !ok {
+		err := fmt.Errorf("cannot parse value %s to an amount", value)
+		return nil, err
+	}
+	return b, nil
 }

@@ -2,6 +2,7 @@ package web
 
 import "time"
 
+// Runtime used to track runtime data
 type Runtime struct {
 	Resolves    uint64
 	Contexts    uint64

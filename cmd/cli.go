@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -32,15 +33,23 @@ func init() {
 	adminCmd.PersistentFlags().StringVarP(&restBaseURL, "rest-url", "e", defaultRestBaseurl, "the base URL of the REST API")
 
 	adminCmd.AddCommand(registerMarketCmd)
+	adminCmd.AddCommand(authorizeCmd)
+	adminCmd.AddCommand(fundCmd)
 	rootCmd.AddCommand(adminCmd)
 	// user commands
 
 	accountCmd.PersistentFlags().StringVar(&from, "from", "", "the address to send the transaction from (must be an account in the keystore), only required when there is more than one account in the keystore")
 	accountCmd.PersistentFlags().StringVarP(&restBaseURL, "rest-url", "e", defaultRestBaseurl, "the base URL of the REST API")
 
+	accountCmd.AddCommand(marketCmd)
+	accountCmd.AddCommand(marketsCmd)
+	accountCmd.AddCommand(bidLimitCmd)
+	accountCmd.AddCommand(bidMarketCmd)
+	accountCmd.AddCommand(askLimitCmd)
+	accountCmd.AddCommand(askMarketCmd)
+	accountCmd.AddCommand(cancelCmd)
 	accountCmd.AddCommand(withdrawCmd)
 	rootCmd.AddCommand(accountCmd)
-
 }
 
 // -----------------------------------------------------------------------------
@@ -137,8 +146,29 @@ var fundCmd = &cobra.Command{
 }
 
 func fund(url, signer, account, asset, amount string) error {
+	f := model.Funding{
+		Account: account,
+		Asset:   asset,
+		Amount:  amount,
+	}
+	// sign the message
+	signature, err := sign(signer, f)
+	if err != nil {
+		fmt.Println("error signing the message:", err)
+		return err
+	}
+	r := &model.SignedRequest[model.Funding]{
+		Signature: signature,
+		Payload:   f,
+	}
+	// send the request
+	code, data, err := post(fmt.Sprintf("%s/fund", restBaseURL), r)
+	if err != nil {
+		fmt.Println("error funding account:", err)
+		return err
+	}
+	print(code, data)
 	return nil
-	
 }
 
 // -----------------------------------------------------------------------------
@@ -148,6 +178,49 @@ func fund(url, signer, account, asset, amount string) error {
 var accountCmd = &cobra.Command{
 	Use:   "account",
 	Short: "Group of user commands",
+}
+
+var marketCmd = &cobra.Command{
+	Use:     "market [market-id]",
+	Aliases: []string{"get-market"},
+	Short:   "Get market information",
+	Args:    cobra.ExactArgs(1),
+	Example: `authex account get 0x1234...`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return market(restBaseURL, args[0])
+	},
+}
+
+func market(url, marketID string) error {
+	// send the request
+	code, data, err := get(fmt.Sprintf("%s/markets/%s", restBaseURL, marketID))
+	if err != nil {
+		fmt.Println("error getting market:", err)
+		return err
+	}
+	print(code, data)
+	return nil
+}
+
+var marketsCmd = &cobra.Command{
+	Use:     "markets",
+	Aliases: []string{"get-markets"},
+	Short:   "Get all markets",
+	Example: `authex account markets`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return markets(restBaseURL)
+	},
+}
+
+func markets(url string) error {
+	// send the request
+	code, data, err := get(fmt.Sprintf("%s/markets", restBaseURL))
+	if err != nil {
+		fmt.Println("error getting markets:", err)
+		return err
+	}
+	print(code, data)
+	return nil
 }
 
 var withdrawCmd = &cobra.Command{
@@ -230,8 +303,30 @@ func sign(address string, msg any) (signature string, err error) {
 	return
 }
 
+func get(url string) (code int, reply string, err error) {
+	client := &http.Client{
+		Timeout: time.Hour * 2,
+	}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	code = resp.StatusCode
+	defer resp.Body.Close()
+	replyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	reply = string(replyBytes)
+	return
+}
+
 // Post make a json rest request
-func post(url string, data interface{}) (code int, body map[string]any, err error) {
+func post(url string, data interface{}) (code int, reply string, err error) {
 	client := &http.Client{
 		Timeout: time.Hour * 2,
 	}
@@ -250,7 +345,11 @@ func post(url string, data interface{}) (code int, body map[string]any, err erro
 	}
 	code = resp.StatusCode
 	defer resp.Body.Close()
-	err = json.NewDecoder(resp.Body).Decode(&body)
+	replyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	reply = string(replyBytes)
 	return
 }
 
@@ -270,4 +369,9 @@ func passwordPrompt(account string) string {
 	}
 	fmt.Println()
 	return s
+}
+
+func print(code int, data string) {
+	os.Stderr.Write([]byte(fmt.Sprintf("response code: %d\n", code)))
+	os.Stdout.Write([]byte(data))
 }

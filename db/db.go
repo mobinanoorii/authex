@@ -117,7 +117,7 @@ func Setup(options *model.Settings) error {
 }
 
 // SaveMarket saves a market to the database
-func (c *Connection) SaveMarket(marketID string, base, quote *model.Token) error {
+func (c *Connection) SaveMarket(marketAddress string, base, quote *model.Token) error {
 	tx, err := c.pool.BeginTx(context.Background(), pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -137,14 +137,64 @@ func (c *Connection) SaveMarket(marketID string, base, quote *model.Token) error
 		return err
 	}
 	_, err = tx.Exec(context.Background(),
-		`INSERT INTO markets (id, base_address, quote_address, recorded_at)
-		VALUES ($1, $2, $3, $4)`, marketID, base.Address, quote.Address, time.Now().UTC())
+		`INSERT INTO markets (address, base_address, quote_address, recorded_at)
+		VALUES ($1, $2, $3, $4)`, marketAddress, base.Address, quote.Address, time.Now().UTC())
 	if err != nil {
 		tx.Rollback(context.Background())
 		return err
 	}
 	tx.Commit(context.Background())
 	return nil
+}
+
+// GetMarkets returns all markets from the database
+func (c *Connection) GetMarkets() ([]*model.MarketInfo, error) {
+	var markets []*model.MarketInfo
+	q := `
+select m.address, m.recorded_at,
+b.symbol bs, b.address ba, b.asset_type bt,
+q.symbol qs, q.address qa, q.asset_type qt
+from markets m join tokens b on (m.base_address = b.address)
+join tokens q on (m.quote_address = q.address)
+order by m.recorded_at desc`
+	rows, err := c.pool.Query(context.Background(), q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var market model.MarketInfo
+		if err := rows.Scan(
+			&market.Address, &market.RecordedAt,
+			&market.Base.Symbol, &market.Base.Address, &market.Base.AssetType,
+			&market.Quote.Symbol, &market.Quote.Address, &market.Quote.AssetType,
+		); err != nil {
+			return nil, err
+		}
+		markets = append(markets, &market)
+	}
+	return markets, nil
+}
+
+// GetMarketByAddress returns a market from the database by its address
+func (c *Connection) GetMarketByAddress(address string) (*model.MarketInfo, error) {
+	var market model.MarketInfo
+	q := `
+select m.address, m.recorded_at,
+b.symbol bs, b.address ba, b.asset_type bt,
+q.symbol qs, q.address qa, q.asset_type qt
+from markets m join tokens b on (m.base_address = b.address)
+join tokens q on (m.quote_address = q.address)
+where m.address = $1`
+	err := c.pool.QueryRow(context.Background(), q, address).Scan(
+		&market.Address, &market.RecordedAt,
+		&market.Base.Symbol, &market.Base.Address, &market.Base.AssetType,
+		&market.Quote.Symbol, &market.Quote.Address, &market.Quote.AssetType,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &market, nil
 }
 
 func (c *Connection) IsAuthorized(address string) (active bool) {

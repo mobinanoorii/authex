@@ -12,7 +12,7 @@ CREATE table if not exists "tokens" (
 
 DROP table if exists "markets" CASCADE;
 CREATE table if not exists "markets" (
-    "id" char(42) PRIMARY KEY,
+    "address" char(42) PRIMARY KEY,
     "base_address" char(42) NOT NULL REFERENCES "tokens" ("address"),
     "quote_address" char(42) NOT NULL REFERENCES "tokens" ("address"),
     "recorded_at" timestamp NOT NULL,
@@ -28,7 +28,7 @@ CREATE table IF NOT EXISTS "orders" (
     "recorded_at" timestamp NOT NULL,
     "price" numeric(10, 2), -- TODO: what precision do we need for price?
     "quantity" int NOT NULL,
-    "market_id" varchar(20) NOT NULL REFERENCES "markets" ("id")
+    "market_address" varchar(20) NOT NULL REFERENCES "markets" ("address")
 );
 
 -- DROP INDEX IF EXISTS "orders_index_address" ON "orders";

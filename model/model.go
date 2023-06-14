@@ -18,6 +18,10 @@ const (
 	AssetERC20    = "erc20"
 )
 
+// -----------------------------------------------------------------------------
+// Server settings
+// -----------------------------------------------------------------------------
+
 // Settings is the global configuration
 type Settings struct {
 	// Version is the version of the application
@@ -65,6 +69,23 @@ type Settings struct {
 		// Permissioned if the system shall be closed to authorized accounts
 		Permissioned bool
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Rest API types
+// -----------------------------------------------------------------------------
+
+
+type MarketInfo struct {
+	// Market is the market of the exchange
+	Address string `json:"address,omitempty"`
+	// RecordedAt is the time the order was received, populated by the server
+	RecordedAt time.Time `json:"recorded_at,omitempty"`
+	// Base is the base token
+	Base Token `json:"base,omitempty"`
+	// Quote is the quote token
+	Quote Token `json:"quote,omitempty"`
+	// TODO: add dept and prices
 }
 
 // SignedRequest is a generic request with a signature
@@ -131,6 +152,72 @@ func (o Order) Validate() error {
 	return nil
 }
 
+// Market is the market of the exchange
+type Market struct {
+	// BaseSymbol is the base currency of the market
+	BaseSymbol string `json:"base,omitempty"`
+	// BaseAddress is the ERC20 address of the base currency
+	// if empty, it's assumed to be an off-chain asset
+	BaseAddress string `json:"base_address,omitempty"`
+	// QuoteSymbol is the quote currency of the market
+	// if empty, it's assumed to be an off-chain asset
+	QuoteSymbol string `json:"quote,omitempty"`
+	// QuoteAddress is the ERC20 address of the quote currency
+	QuoteAddress string `json:"quote_address,omitempty"`
+}
+
+func (m Market) String() string {
+	return fmt.Sprintf("%s/%s", m.BaseSymbol, m.QuoteSymbol)
+}
+
+func (m Market) Serialize() ([]byte, error) {
+	return json.Marshal(m)
+}
+
+type Funding struct {
+	// Account is the address of the account
+	Account string `json:"address,omitempty"`
+	// Asset is the address of the asset
+	Asset string `json:"asset_address,omitempty"`
+	// Amount is the amount of the change
+	Amount string `json:"amount,omitempty"`
+}
+
+func (f Funding) Serialize() ([]byte, error) {
+	return json.Marshal(f)
+}
+
+// ---------------------------
+// Internal types
+// ---------------------------
+
+type BalanceDelta struct {
+	// Address is the address of the account
+	Address string `json:"address,omitempty"`
+	// Amount is the amount of the change
+	Amount *big.Int `json:"amount,omitempty"`
+}
+
+func (bd BalanceDelta) String() string {
+	return fmt.Sprintf("%s: %s", bd.Address, bd.Amount.String())
+}
+
+func NewBalanceDelta(address string, amount *big.Int) *BalanceDelta {
+	return &BalanceDelta{
+		Address: address,
+		Amount:  amount,
+	}
+}
+
+type BalanceChange struct {
+	// BlockNumber is the block number of the transfer
+	BlockNumber uint64 `json:"block_number,omitempty"`
+	// TokenAddress is the address of the token
+	TokenAddress string `json:"token_address,omitempty"`
+	// Balances lists the balance updates
+	Deltas []*BalanceDelta `json:"deltas,omitempty"`
+}
+
 // Match is the result of a match between two orders
 type Match struct {
 	Request *SignedRequest[Order] `json:"order_request,omitempty"`
@@ -193,53 +280,4 @@ func NewOffChainAsset(symbol string) *Token {
 		Address:   helpers.AsAddress(strings.ToLower(symbol)),
 		AssetType: AssetOffChain,
 	}
-}
-
-// Market is the market of the exchange
-type Market struct {
-	// BaseSymbol is the base currency of the market
-	BaseSymbol string `json:"base,omitempty"`
-	// BaseAddress is the ERC20 address of the base currency
-	// if empty, it's assumed to be an off-chain asset
-	BaseAddress string `json:"base_address,omitempty"`
-	// QuoteSymbol is the quote currency of the market
-	// if empty, it's assumed to be an off-chain asset
-	QuoteSymbol string `json:"quote,omitempty"`
-	// QuoteAddress is the ERC20 address of the quote currency
-	QuoteAddress string `json:"quote_address,omitempty"`
-}
-
-func (m Market) String() string {
-	return fmt.Sprintf("%s/%s", m.BaseSymbol, m.QuoteSymbol)
-}
-
-func (m Market) Serialize() ([]byte, error) {
-	return json.Marshal(m)
-}
-
-type BalanceDelta struct {
-	// Address is the address of the account
-	Address string `json:"address,omitempty"`
-	// Amount is the amount of the change
-	Amount *big.Int `json:"amount,omitempty"`
-}
-
-func (bd BalanceDelta) String() string {
-	return fmt.Sprintf("%s: %s", bd.Address, bd.Amount.String())
-}
-
-func NewBalanceDelta(address string, amount *big.Int) *BalanceDelta {
-	return &BalanceDelta{
-		Address: address,
-		Amount:  amount,
-	}
-}
-
-type BalanceChange struct {
-	// BlockNumber is the block number of the transfer
-	BlockNumber uint64 `json:"block_number,omitempty"`
-	// TokenAddress is the address of the token
-	TokenAddress string `json:"token_address,omitempty"`
-	// Balances lists the balance updates
-	Deltas []*BalanceDelta `json:"deltas,omitempty"`
 }
