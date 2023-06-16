@@ -31,11 +31,12 @@ func NewPool(matches chan *model.Match) *Pool {
 func (p *Pool) Run() {
 	for {
 		select {
-		case order := <-p.Inbound:
+		case order, ok := <-p.Inbound:
+			if !ok {
+				// channel is closed
+				return
+			}
 			p.handleOrder(order)
-		default:
-			// channel is closed
-			return
 		}
 	}
 }
@@ -86,6 +87,7 @@ func (p *Pool) handleOrder(r *model.SignedRequest[model.Order]) {
 }
 
 func (p *Pool) ProcessMatches(r *model.SignedRequest[model.Order] , done []*ob.Order, partial *ob.Order) {
+	log.Info("Processing matches")
 	// for _, order := range done {
 	// 	p.Matches <- model.NewMatch(r, order.ID(), order.Price())
 	// }

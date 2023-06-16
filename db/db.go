@@ -1,9 +1,12 @@
 package db
 
 import (
+	"authex/helpers"
 	"authex/model"
 	"context"
 	_ "embed"
+	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -221,6 +224,51 @@ func (c *Connection) GetTokenAddresses() ([]string, error) {
 		addresses = append(addresses, address)
 	}
 	return addresses, nil
+}
+
+// ValidateOrder checks if an order is valid
+// by checking if the market exists and if the account
+// has enough balance to place the order
+func (c *Connection) ValidateOrder(order *model.Order, from string) error {
+	var market model.MarketInfo
+	err := c.pool.QueryRow(context.Background(), "SELECT base_address, quote_address FROM markets WHERE address = $1", order.Market).Scan(&market.Base.Address, &market.Quote.Address)
+	if err != nil {
+		return fmt.Errorf("market not found")
+	}
+	// check if the account has enough balance to place the order
+	size := big.NewInt(int64(order.Size))
+	price, err := helpers.ParseAmount(order.Price)
+	if err != nil {
+		return fmt.Errorf("invalid price")
+	}
+	// calculate the total amount
+	total := big.NewInt(0)
+	total.Mul(size, price)
+
+	if order.Side == model.SideBid {
+		b, err := c.GetBalance(from, market.Quote.Address)
+		if err != nil {
+			return err
+		}
+		if total.Cmp(b) > 0 {
+			return fmt.Errorf("insufficient balance")
+		}
+	} else {
+		b, err := c.GetBalance(from, market.Base.Address)
+		if err != nil {
+			return err
+		}
+		if total.Cmp(b) > 0 {
+			return fmt.Errorf("insufficient balance")
+		}
+	}
+	return nil
+}
+
+func (c *Connection) GetBalance(address, token string) (*big.Int, error) {
+	b := big.NewInt(0)
+	err := c.pool.QueryRow(context.Background(), "SELECT balance FROM balances WHERE address = $1 AND token = $2", address, token).Scan(b)
+	return b, err
 }
 
 // GetOrder returns an order from the database

@@ -322,8 +322,8 @@ func (r AuthexServer) getMarkets(c echo.Context) error {
 // fund adds funds to the an account
 func (r AuthexServer) fund(c echo.Context) error {
 	req := &model.SignedRequest[model.Funding]{}
-	if c.Bind(r) != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid market request"})
+	if c.Bind(req) != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid funding request"})
 	}
 	// admin only
 	if err := r.isAdmin(c, req.Signature, req.Payload); err != nil {
@@ -363,21 +363,27 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 	}
 	// verify that is not older than a few seconds
 	or.Payload.RecordedAt = time.Now().UTC()
+	if or.Payload.SubmittedAt.IsZero() {
+		or.Payload.SubmittedAt = or.Payload.RecordedAt
+	}
 	if or.Payload.RecordedAt.Sub(or.Payload.SubmittedAt) > 2*time.Second {
 		err := fmt.Errorf("order is older than 2 seconds")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	// populate the order ID and RecordedAt
-	or.Payload.ID = uuid.New().String()
 	// validate the order
 	if err := or.Payload.Validate(); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	// TODO: shortcut hardcode the market
+	// check if the market exists and check the balances
+	if err := r.dbCli.ValidateOrder(&	or.Payload, sender); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	// populate the order ID and RecordedAt
+	or.Payload.ID = uuid.New().String()
 	// queue the order for processing
 	r.clobCli.Inbound <- or
 	// reply with the order
-	return c.JSON(http.StatusOK, map[string]any{"status": "ok", "order": or.Payload})
+	return c.JSON(http.StatusOK, map[string]any{"status": "ok", "orderID": or.Payload.ID})
 }
 
 func (r AuthexServer) cancelOrder(c echo.Context) error {
