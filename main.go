@@ -11,10 +11,15 @@ import (
 )
 
 // Version hold the version of the program
-var Version = "dev"
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+	builtBy = "unknown"
+)
 
 func main() {
-	if err := cmd.Execute(Version); err != nil {
+	if err := cmd.Execute(version); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
