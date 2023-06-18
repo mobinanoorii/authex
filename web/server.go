@@ -13,11 +13,11 @@ import (
 	"authex/clob"
 	"authex/db"
 	"authex/helpers"
+	h "authex/helpers"
 	"authex/model"
 	"authex/network"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
@@ -53,6 +53,13 @@ const (
 	POST string = "POST"
 )
 
+const (
+	keyRequestID = "request-id"
+	keyOrderID   = "order-id"
+	valError     = "error"
+	valSuccess   = "ok"
+)
+
 // NewAuthexServer creates a new CLOB server
 func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.NodeClient, dbCli *db.Connection) (AuthexServer, error) {
 	var err error
@@ -70,9 +77,16 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 		AllowOrigins: []string{"*"},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
 	}))
+	// assign a unique request ID to each request
+	r.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set(keyRequestID, h.IID())
+			return next(c)
+		}
+	})
 	r.echo.Logger.SetOutput(os.Stdout)
 	r.echo.Logger.SetLevel(log.INFO)
-	r.echo.Logger.Infof("starting CLOB server on chain %s", opts.Network.ChainID)
+	r.echo.Logger.Infof("starting authex server on chain %s@%s", opts.Network.ChainID, opts.Network.RPCEndpoint)
 
 	// start listening for events
 
@@ -182,6 +196,36 @@ func (r AuthexServer) Start() error {
 	return r.echo.Start(r.opts.Web.ListenAddr)
 }
 
+func withMsg(msg string) func(map[string]any) {
+	return func(m map[string]any) {
+		m["message"] = msg
+	}
+}
+
+func withData(key string, data any) func(map[string]any) {
+	return func(m map[string]any) {
+		m[key] = data
+	}
+}
+
+func rsp(rqId, status string, opts ...func(map[string]any)) map[string]any {
+	data := map[string]any{}
+	data["status"] = status
+	data[keyRequestID] = rqId
+	for _, o := range opts {
+		o(data)
+	}
+	return data
+}
+
+func ok(reqID string, opts ...func(map[string]any)) map[string]any {
+	return rsp(reqID, valSuccess, opts...)
+}
+
+func er(reqID, msg string, opts ...func(map[string]any)) map[string]any {
+	return rsp(reqID, valError, append(opts, withMsg(msg))...)
+}
+
 // extractAddress verifies the signature of an order
 // https://goethereumbook.org/signature-verify/
 // // TODO: the signature verification may be weak since tbe messages can be replayed
@@ -218,16 +262,17 @@ func (r AuthexServer) isAuthorized(address string) (err error) {
 }
 
 func (r AuthexServer) isAdmin(c echo.Context, signature string, payload model.Serializable) error {
+	requestID := c.Get(keyRequestID).(string)
 	sender, err := extractAddress(signature, payload)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusUnauthorized, er(requestID, err.Error()))
 	}
 	isAdmin, err := r.nodeCli.IsAdmin(sender)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, er(requestID, err.Error()))
 	}
 	if !isAdmin {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "only the admin can register a new market"})
+		return c.JSON(http.StatusUnauthorized, er(requestID, "only the admin can perform this action"))
 	}
 	return nil
 }
@@ -238,24 +283,29 @@ func (r AuthexServer) pause(c echo.Context) error {
 }
 
 func (r AuthexServer) registerMarket(c echo.Context) error {
+	// generate a new request id to be used in logging
+	requestID := c.Get(keyRequestID).(string)
+
 	cmr := &model.SignedRequest[model.Market]{}
-	if c.Bind(cmr) != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid market request"})
+	if err := c.Bind(cmr); err != nil {
+		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid market request"))
 	}
 	// admin only
 	if err := r.isAdmin(c, cmr.Signature, cmr.Payload); err != nil {
-		return err
+		log.Errorf("error registering market: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
 	}
 
 	// helper function to parse a token
-	parseToken := func(symbol string, address string) (token *model.Token, err error) {
-		if helpers.IsEmpty(symbol) {
+	parseToken := func(symbol string, address string) (token *model.Asset, err error) {
+		if h.IsEmpty(symbol) {
 			err = fmt.Errorf("missing base or quote symbol")
 			return
 		}
 		// set the base and quote tokens
 		token = model.NewOffChainAsset(symbol)
-		if !helpers.IsEmpty(address) {
+		if !h.IsEmpty(address) {
 			token = model.NewERC20Token(symbol, address)
 			isERC20, errERC := r.nodeCli.IsERC20(token.Address)
 			if errERC != nil {
@@ -273,19 +323,28 @@ func (r AuthexServer) registerMarket(c echo.Context) error {
 	// set the base and quote tokens
 	base, err := parseToken(cmr.Payload.BaseSymbol, cmr.Payload.BaseAddress)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		log.Errorf("error parsing base token: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, err.Error()))
 	}
 	quote, err := parseToken(cmr.Payload.QuoteSymbol, cmr.Payload.QuoteAddress)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		log.Errorf("error parsing quote token: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, err.Error()))
 	}
 
-	// compute the market ID
-	marketID := helpers.ComputeMarketID(base.Address, quote.Address)
-	if err := r.dbCli.SaveMarket(marketID, base, quote); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	// compute the market address
+	marketAddr, err := h.ComputeMarketAddress(base.Address, quote.Address)
+	if err != nil {
+		log.Errorf("error computing market address: %s [incident: %s]", err.Error(), requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid addresses for base or quote"))
 	}
-
+	log.Infof("new market address: %s", marketAddr)
+	if err := r.dbCli.SaveMarket(marketAddr, base, quote); err != nil {
+		log.Errorf("error saving market: %s [incident: %s]", err.Error(), requestID)
+		return c.JSON(http.StatusInternalServerError, er(requestID, "error saving market"))
+	}
+	// open the market
+	r.clobCli.OpenMarket(marketAddr)
 	// start listening
 	if base.IsERC20() {
 		r.nodeCli.Tokens <- base.Address
@@ -294,46 +353,54 @@ func (r AuthexServer) registerMarket(c echo.Context) error {
 		r.nodeCli.Tokens <- quote.Address
 	}
 	// Only the admin can register a new market
-	return c.JSON(http.StatusOK, map[string]string{"id": marketID})
+	return c.JSON(http.StatusOK, ok(requestID, withData("address", marketAddr)))
 }
 
 // getMarket returns the market details for a given market address
 func (r AuthexServer) getMarketByAddress(c echo.Context) error {
-	// compute the market ID
+	requestID := c.Get(keyRequestID).(string)
 	marketID := c.Param("address")
 	m, err := r.dbCli.GetMarketByAddress(marketID)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		log.Errorf("error getting market: %s [incident: %s]", err.Error(), requestID)
+		return c.JSON(http.StatusNotFound, er(requestID, "market not found"))
 	}
 	// TODO: add the market dept
-	return c.JSON(http.StatusOK, m)
+	m.OrderBook = r.clobCli.GetOrderBook(marketID)
+	return c.JSON(http.StatusOK, ok(requestID, withData("market", m)))
 }
 
 // getMarkets returns the list of markets
 func (r AuthexServer) getMarkets(c echo.Context) error {
-	// compute the market ID
+	requestID := c.Get(keyRequestID).(string)
 	markets, err := r.dbCli.GetMarkets()
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		log.Errorf("error getting markets: %s [incident: %s]", err.Error(), requestID)
+		return c.JSON(http.StatusInternalServerError, er(requestID, "error getting markets"))
 	}
-	return c.JSON(http.StatusOK, markets)
+	return c.JSON(http.StatusOK, ok(requestID, withData("markets", markets)))
 }
 
 // fund adds funds to the an account
 func (r AuthexServer) fund(c echo.Context) error {
+	// generate a new request id to be used in logging
+	requestID := c.Get(keyRequestID).(string)
 	req := &model.SignedRequest[model.Funding]{}
-	if c.Bind(req) != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid funding request"})
+	if err := c.Bind(req); err != nil {
+		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid funding request"))
 	}
 	// admin only
 	if err := r.isAdmin(c, req.Signature, req.Payload); err != nil {
-		return err
+		log.Errorf("error funding account: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
 	}
 	// extract the address from the signature
 
 	amount, err := helpers.ParseAmount(req.Payload.Amount)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		log.Errorf("error parsing amount: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid amount"))
 	}
 	bc := &model.BalanceChange{
 		TokenAddress: req.Payload.Asset,
@@ -342,75 +409,97 @@ func (r AuthexServer) fund(c echo.Context) error {
 		},
 	}
 	r.dbCli.Transfers <- bc
-	return c.JSON(http.StatusOK, map[string]string{"status": "scheduled"})
+	return c.JSON(http.StatusOK, ok(requestID, withMsg("scheduled")))
 }
 
 // postOrder submits a new order to the CLOB
 // it is required that the order is signed by the account
 // the fields ID and RecordedAt are overwritten by the server
 func (r AuthexServer) postOrder(c echo.Context) error {
-	or := &model.SignedRequest[model.Order]{}
-	if c.Bind(or) != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid order request"})
+	// generate a new request id to be used in logging
+	requestID := c.Get(keyRequestID).(string)
+	req := &model.SignedRequest[model.Order]{}
+	if err := c.Bind(req); err != nil {
+		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order request"))
 	}
 	// extract the address from the signature
-	sender, err := extractAddress(or.Signature, or.Payload)
+	sender, err := extractAddress(req.Signature, req.Payload)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		log.Errorf("error extracting account address: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "error extracting account address"))
 	}
 	if err := r.isAuthorized(sender); err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		log.Errorf("error authorizing address: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
 	}
+	// update the from address
+	req.From = sender
 	// verify that is not older than a few seconds
-	or.Payload.RecordedAt = time.Now().UTC()
-	if or.Payload.SubmittedAt.IsZero() {
-		or.Payload.SubmittedAt = or.Payload.RecordedAt
+	req.Payload.RecordedAt = time.Now().UTC()
+	if req.Payload.SubmittedAt.IsZero() {
+		req.Payload.SubmittedAt = req.Payload.RecordedAt
 	}
-	if or.Payload.RecordedAt.Sub(or.Payload.SubmittedAt) > 2*time.Second {
+	if req.Payload.RecordedAt.Sub(req.Payload.SubmittedAt) > 2*time.Second {
 		err := fmt.Errorf("order is older than 2 seconds")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		log.Errorf("error validating order: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "order is older than 2 seconds"))
 	}
 	// validate the order
-	if err := or.Payload.Validate(); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	if err := req.Payload.Validate(); err != nil {
+		log.Errorf("error validating order: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order"))
 	}
+
 	// check if the market exists and check the balances
-	if err := r.dbCli.ValidateOrder(&	or.Payload, sender); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	// TODO this modifies the order (assign the ID), refactor
+	if err := r.dbCli.ValidateOrder(&req.Payload, sender); err != nil {
+		log.Errorf("error validating order on db: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order"))
 	}
-	// populate the order ID and RecordedAt
-	or.Payload.ID = uuid.New().String()
 	// queue the order for processing
-	r.clobCli.Inbound <- or
+	r.clobCli.Inbound <- req
 	// reply with the order
-	return c.JSON(http.StatusOK, map[string]any{"status": "ok", "orderID": or.Payload.ID})
+	return c.JSON(http.StatusOK, ok(requestID, withData(keyOrderID, req.Payload.ID)))
 }
 
 func (r AuthexServer) cancelOrder(c echo.Context) error {
+	requestID := c.Get(keyRequestID).(string)
 	or := &model.SignedRequest[model.Order]{}
-	if c.Bind(or) != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid order request"})
+	if err := c.Bind(or); err != nil {
+		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order request"))
 	}
 	// extract the address from the signature
 	sender, err := extractAddress(or.Signature, or.Payload)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		log.Errorf("error extracting account address: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "error extracting account address"))
 	}
 	if err := r.isAuthorized(sender); err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		log.Errorf("error authorizing address: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
 	}
 	or.Payload.Side = model.CancelOrder
 	// queue the order for processing
 	r.clobCli.Inbound <- or
-	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
+	// reply with the order
+	return c.JSON(http.StatusOK, ok(requestID, withMsg("scheduled"), withData(keyOrderID, or.Payload.ID)))
 }
 
 func (r AuthexServer) getOrder(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
+	requestID := c.Get(keyRequestID).(string)
+	orderID := c.Param("id")
+	order, err := r.dbCli.GetOrder(orderID)
+	if err != nil {
+		log.Errorf("error getting order: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusNotFound, er(requestID, "order not found"))
+	}
+	return c.JSON(http.StatusOK, ok(requestID, withData("order", order)))
 }
 
 func (r AuthexServer) withdraw(c echo.Context) error {
-	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
+	return c.JSON(http.StatusNotImplemented, er(c.Get(keyRequestID).(string), "not implemented"))
 }
 
 func (r AuthexServer) index(c echo.Context) error {
