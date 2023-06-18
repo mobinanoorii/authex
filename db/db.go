@@ -5,6 +5,7 @@ import (
 	"authex/model"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -59,52 +60,47 @@ func (c *Connection) Run() {
 	// handle ERC20 transfers
 	go func() {
 		for {
-			select {
-			case t, ok := <-c.Transfers:
-				if !ok {
-					wg.Done()
-					log.Debugf("closing balance handler")
-				}
-				tx, err := c.pool.BeginTx(context.Background(), pgx.TxOptions{})
-				if err != nil {
-					log.Errorf("error starting transaction: %v", err)
-				}
-				q := `INSERT INTO balances (address, asset_address, balance) VALUES ($1, $2, $3) ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $3`
-				for _, delta := range t.Deltas {
-					if _, err := tx.Exec(context.Background(), q, delta.Address, t.TokenAddress, delta.Amount); err != nil {
-						log.Errorf("error updating the recipient balance: %v", err)
-						tx.Rollback(context.Background())
-						break
-					}
-				}
-				// update token block number
-				if _, err := tx.Exec(context.Background(), "UPDATE assets SET last_block = $1 WHERE address = $2", t.BlockNumber, t.TokenAddress); err != nil {
-					log.Errorf("error updating the asset block number: %v", err)
+			t, ok := <-c.Transfers
+			if !ok {
+				wg.Done()
+				log.Debugf("closing balance handler")
+			}
+			tx, err := c.pool.BeginTx(context.Background(), pgx.TxOptions{})
+			if err != nil {
+				log.Errorf("error starting transaction: %v", err)
+			}
+			q := `INSERT INTO balances (address, asset_address, balance) VALUES ($1, $2, $3) ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $3`
+			for _, delta := range t.Deltas {
+				if _, err := tx.Exec(context.Background(), q, delta.Address, t.TokenAddress, delta.Amount); err != nil {
+					log.Errorf("error updating the recipient balance: %v", err)
 					tx.Rollback(context.Background())
 					break
 				}
-
-				tx.Commit(context.Background())
 			}
+			// update token block number
+			if _, err := tx.Exec(context.Background(), "UPDATE assets SET last_block = $1 WHERE address = $2", t.BlockNumber, t.TokenAddress); err != nil {
+				log.Errorf("error updating the asset block number: %v", err)
+				tx.Rollback(context.Background())
+				break
+			}
+
+			tx.Commit(context.Background())
 		}
 	}()
 
 	// handle CLOB matches
 	go func() {
 		for {
-			select {
-			case match, ok := <-c.Matches:
-				if !ok {
-					wg.Done()
-					log.Debugf("closing match handler")
-				}
-				c.handleMatch(match)
+			match, ok := <-c.Matches
+			if !ok {
+				wg.Done()
+				log.Debugf("closing match handler")
 			}
+			c.handleMatch(match)
 		}
 	}()
 
 	wg.Wait()
-
 }
 
 func (c *Connection) handleMatch(m *model.Match) {
@@ -253,7 +249,7 @@ func (c *Connection) ValidateOrder(order *model.Order, from string) error {
 	total := price.Mul(size)
 
 	if order.Side == model.SideBid {
-		// check if the user has enough balance (always the base asset)
+		// check if the user has enough balance (always the base asset).
 		b, err := c.GetBalance(from, market.Base.Address)
 		if err != nil {
 			return err
@@ -283,7 +279,7 @@ func (c *Connection) ValidateOrder(order *model.Order, from string) error {
 func (c *Connection) GetBalance(address, token string) (decimal.Decimal, error) {
 	var b decimal.Decimal
 	err := c.pool.QueryRow(context.Background(), "SELECT balance FROM balances WHERE address = $1 AND asset_address = $2", address, token).Scan(&b)
-	if err != nil && err == pgx.ErrNoRows {
+	if err != nil && errors.Is(err, pgx.ErrNoRows) {
 		return b, nil
 	}
 	return b, err

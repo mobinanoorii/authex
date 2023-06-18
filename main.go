@@ -4,7 +4,6 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"authex/cmd"
@@ -20,7 +19,7 @@ var (
 
 func main() {
 	if err := cmd.Execute(version); err != nil {
-		fmt.Println(err)
+		println(err)
 		os.Exit(1)
 	}
 }

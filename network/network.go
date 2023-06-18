@@ -74,25 +74,22 @@ func NewNodeClient(settings *model.Settings, transfers chan *model.BalanceChange
 
 // Run begin listening for network events
 func (n *NodeClient) Run() {
-
 	monitors := 0
 	for {
-		select {
-		case token, ok := <-n.Tokens:
-			if !ok {
-				log.Infof("token monitor channel closed")
-			}
-			monitors++
-			log.Infof("received token to monitor: %s", token)
-			// check if the token is already monitored
-			if _, ok := n.monitoredTokens[token]; ok {
-				log.Infof("token already monitored: %s", token)
-				continue
-			}
-			// start monitoring the token
-			go n.monitorToken(token, monitors)
-			n.monitoredTokens[token] = monitors
+		token, ok := <-n.Tokens
+		if !ok {
+			log.Infof("token monitor channel closed")
 		}
+		monitors++
+		log.Infof("received token to monitor: %s", token)
+		// check if the token is already monitored
+		if _, ok := n.monitoredTokens[token]; ok {
+			log.Infof("token already monitored: %s", token)
+			continue
+		}
+		// start monitoring the token
+		go n.monitorToken(token, monitors)
+		n.monitoredTokens[token] = monitors
 	}
 }
 
@@ -198,7 +195,6 @@ func (n *NodeClient) ExecuteWithdraw(tokenAddress string, amount *big.Int, to st
 
 // Setup import the keyfile in the local keystore and return the address
 func Setup(settings *model.Settings) error {
-
 	err := os.RemoveAll(settings.Identity.KeystorePath)
 	if err != nil {
 		return err

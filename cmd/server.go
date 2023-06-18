@@ -24,12 +24,11 @@ var startCmd = &cobra.Command{
 
 // runFunction create the new resolver driver from the options and start the server.
 func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
-
 	return func(_ *cobra.Command, _ []string) (err error) {
 		// open the database connection
 		db, err := db.NewConnection(options)
 		if err != nil {
-			err = fmt.Errorf("error connecting to the database: %v", err)
+			err = fmt.Errorf("error connecting to the database: %w", err)
 			return
 		}
 		go db.Run()
@@ -40,7 +39,7 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		// restore markets
 		markets, err := db.GetMarkets()
 		if err != nil {
-			err = fmt.Errorf("error getting the markets: %v", err)
+			err = fmt.Errorf("error getting the markets: %w", err)
 			return
 		}
 		for _, market := range markets {
@@ -51,14 +50,14 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		// start the network client
 		nodeCli, err := network.NewNodeClient(options, db.Transfers)
 		if err != nil {
-			err = fmt.Errorf("error setting up the node client: %v", err)
+			err = fmt.Errorf("error setting up the node client: %w", err)
 			return
 		}
 		go nodeCli.Run()
 		// get the token list and send them to the node client
 		tokens, err := db.GetAssetAddressesByClass(model.AssetERC20)
 		if err != nil {
-			err = fmt.Errorf("error getting the token list: %v", err)
+			err = fmt.Errorf("error getting the token list: %w", err)
 			return
 		}
 		for _, token := range tokens {
@@ -68,7 +67,7 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		// finally start the server
 		authex, err := web.NewAuthexServer(options, clob, nodeCli, db)
 		if err != nil {
-			err = fmt.Errorf("error starting the server: %v", err)
+			err = fmt.Errorf("error starting the server: %w", err)
 			return
 		}
 		return authex.Start()
@@ -86,12 +85,12 @@ func setup(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		// open the database connection
 		err := db.Setup(options)
 		if err != nil {
-			fmt.Println("error connecting to the database")
+			println("error connecting to the database")
 			return err
 		}
 		err = network.Setup(options)
 		if err != nil {
-			fmt.Println("error in network setup")
+			println("error in network setup")
 			return err
 		}
 		return nil

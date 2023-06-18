@@ -34,14 +34,12 @@ func (p *Pool) Close() {
 
 func (p *Pool) Run() {
 	for {
-		select {
-		case order, ok := <-p.Inbound:
-			if !ok {
-				// channel is closed
-				return
-			}
-			p.handleOrder(order)
+		order, ok := <-p.Inbound
+		if !ok {
+			// channel is closed
+			return
 		}
+		p.handleOrder(order)
 	}
 }
 

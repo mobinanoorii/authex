@@ -42,7 +42,7 @@ func Sign(keystorePath, address string, msg any) (signature string, err error) {
 	// unlock the account
 	pass := PasswordPrompt(signer.Address.String())
 	if err = ks.Unlock(signer, pass); err != nil {
-		fmt.Println("error unlocking account:", err)
+		println("error unlocking account:", err)
 		return
 	}
 	// prepare the message
@@ -68,10 +68,10 @@ func PasswordPrompt(account string) string {
 	var s string
 	for {
 		fmt.Fprint(os.Stderr, label+" ")
-		b, _ := term.ReadPassword(int(syscall.Stdin))
+		b, _ := term.ReadPassword(syscall.Stdin)
 		s = string(b)
 		break
 	}
-	fmt.Println()
+	println()
 	return s
 }

@@ -12,8 +12,7 @@ var (
 	from        string // the address to send the transaction from
 )
 
-func init() {
-
+func initCmd() {
 	// QUERY
 	rootCmd.AddCommand(queryCmd)
 
@@ -67,7 +66,6 @@ func init() {
 
 	serverCmd.AddCommand(setupCmd)
 	serverCmd.AddCommand(startCmd)
-
 }
 
 // options hold the settings for the server
@@ -83,7 +81,7 @@ var rootCmd = &cobra.Command{
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(v string) error {
 	options.Version = v
-
+	initCmd()
 	rootCmd.Version = options.Version
 	return rootCmd.Execute()
 }

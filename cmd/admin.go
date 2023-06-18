@@ -9,10 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() {
-
-}
-
 // -----------------------------------------------------------------------------
 // admin Commands
 // -----------------------------------------------------------------------------
@@ -22,7 +18,7 @@ var adminCmd = &cobra.Command{
 	Short: "Group of admin commands",
 }
 
-// registerMarketCmd represents the registerMarket command
+// registerMarketCmd represents the registerMarket command.
 var registerMarketCmd = &cobra.Command{
 	Use:   "register-market",
 	Short: "Register a new market",
@@ -58,7 +54,7 @@ func registerMarket(options *model.Settings) func(_ *cobra.Command, _ []string) 
 		// sign the message
 		signature, err := helpers.Sign(options.Identity.KeystorePath, from, m)
 		if err != nil {
-			fmt.Println("error signing the message:", err)
+			println("error signing the message:", err)
 			return err
 		}
 
@@ -70,17 +66,17 @@ func registerMarket(options *model.Settings) func(_ *cobra.Command, _ []string) 
 		// send the request
 		code, data, err := helpers.Post(fmt.Sprintf("%s/markets", restBaseURL), mr)
 		if err != nil {
-			fmt.Println("error creating market:", err)
+			println("error creating market:", err)
 			return err
 		}
-		fmt.Println("response code:", code)
-		fmt.Println("response body:", data)
+		println("response code:", code)
+		println("response body:", data)
 		// open the database connection
 		return
 	}
 }
 
-// registerMarketCmd represents the registerMarket command
+// registerMarketCmd represents the registerMarket command.
 var authorizeCmd = &cobra.Command{
 	Use:   "authorize [account_address]",
 	Short: "Authorize a new account to trade",
@@ -115,7 +111,7 @@ func fund(url, signer, account, asset, amount string) error {
 	// sign the message
 	signature, err := helpers.Sign(options.Identity.KeystorePath, signer, f)
 	if err != nil {
-		fmt.Println("error signing the message:", err)
+		println("error signing the message:", err)
 		return err
 	}
 	r := &model.SignedRequest[model.Funding]{
@@ -123,9 +119,9 @@ func fund(url, signer, account, asset, amount string) error {
 		Payload:   f,
 	}
 	// send the request
-	code, data, err := helpers.Post(fmt.Sprintf("%s/fund", restBaseURL), r)
+	code, data, err := helpers.Post(fmt.Sprint(url, "/fund"), r)
 	if err != nil {
-		fmt.Println("error funding account:", err)
+		println("error funding account:", err)
 		return err
 	}
 	helpers.PrintResponse(code, data)

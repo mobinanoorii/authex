@@ -23,7 +23,7 @@ var withdrawCmd = &cobra.Command{
 	Use: "withdraw",
 }
 
-func order(URL string, from string, market string, size string, price string, side string) error {
+func order(url string, from string, market string, size string, price string, side string) error {
 	sizeUint, err := strconv.ParseUint(size, 10, 64)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func order(URL string, from string, market string, size string, price string, si
 		Payload:   o,
 	}
 	// send the request
-	code, data, err := helpers.Post(fmt.Sprintf("%s/orders", URL), r)
+	code, data, err := helpers.Post(fmt.Sprint(url, "/orders"), r)
 	if err != nil {
 		err = errors.Join(errors.New("error creating order"), err)
 		return err

@@ -12,7 +12,6 @@ import (
 
 	"authex/clob"
 	"authex/db"
-	"authex/helpers"
 	h "authex/helpers"
 	"authex/model"
 	"authex/network"
@@ -46,12 +45,6 @@ type RestEndpoint struct {
 	Help    string
 	Handler func(c echo.Context) error
 }
-
-// Http Methods constants
-const (
-	GET  string = "GET"
-	POST string = "POST"
-)
 
 const (
 	keyRequestID = "request-id"
@@ -100,7 +93,7 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 		{
 			Name:    "pause",
 			Path:    "/admin/pause",
-			Method:  POST,
+			Method:  http.MethodPost,
 			Handler: r.pause,
 			Help:    "Pause the CLOB, no new orders will be accepted",
 		},
@@ -108,7 +101,7 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 			// register a new market
 			Name:    "register",
 			Path:    "/markets",
-			Method:  POST,
+			Method:  http.MethodPost,
 			Handler: r.registerMarket,
 			Help:    "Register a new market",
 		},
@@ -116,7 +109,7 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 			// register a new market
 			Name:    "register",
 			Path:    "/markets",
-			Method:  GET,
+			Method:  http.MethodGet,
 			Handler: r.getMarkets,
 			Help:    "Get all markets",
 		},
@@ -124,7 +117,7 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 			// register a new market
 			Name:    "register",
 			Path:    "/markets/:address",
-			Method:  GET,
+			Method:  http.MethodGet,
 			Handler: r.getMarketByAddress,
 			Help:    "Get a market by address",
 		},
@@ -132,7 +125,7 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 			// register a new market
 			Name:    "fund",
 			Path:    "/fund",
-			Method:  POST,
+			Method:  http.MethodPost,
 			Handler: r.fund,
 			Help:    "Fund an account",
 		},
@@ -140,42 +133,42 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 
 			Name:    "Post order",
 			Path:    "/orders",
-			Method:  POST,
+			Method:  http.MethodPost,
 			Handler: r.postOrder,
 			Help:    "Post a new buy or sell order",
 		},
 		{
 			Name:    "Cancel order",
 			Path:    "/orders/cancel",
-			Method:  POST,
+			Method:  http.MethodPost,
 			Handler: r.cancelOrder,
 			Help:    "Cancel an order",
 		},
 		{
 			Name:    "Withdraw",
 			Path:    "/withdraw",
-			Method:  POST,
+			Method:  http.MethodPost,
 			Handler: r.withdraw,
 			Help:    "Withdraw funds from the CLOB",
 		},
 		{
 			Name:    "Get order",
 			Path:    "/orders/:id",
-			Method:  GET,
+			Method:  http.MethodGet,
 			Handler: r.getOrder,
 			Help:    "Get an order by id",
 		},
 		{
 			Name:    "Get orders",
 			Path:    "/account/:address/orders",
-			Method:  GET,
+			Method:  http.MethodGet,
 			Handler: r.getOrder,
 			Help:    "Get all orders for an account",
 		},
 		{
 			Name:    "Get balance",
 			Path:    "/account/:address/balance/:symbol",
-			Method:  GET,
+			Method:  http.MethodGet,
 			Handler: r.getOrder,
 			Help:    "Get the balance of an account for a symbol",
 		},
@@ -208,10 +201,10 @@ func withData(key string, data any) func(map[string]any) {
 	}
 }
 
-func rsp(rqId, status string, opts ...func(map[string]any)) map[string]any {
+func rsp(reqID, status string, opts ...func(map[string]any)) map[string]any {
 	data := map[string]any{}
 	data["status"] = status
-	data[keyRequestID] = rqId
+	data[keyRequestID] = reqID
 	for _, o := range opts {
 		o(data)
 	}
@@ -397,7 +390,7 @@ func (r AuthexServer) fund(c echo.Context) error {
 	}
 	// extract the address from the signature
 
-	amount, err := helpers.ParseAmount(req.Payload.Amount)
+	amount, err := h.ParseAmount(req.Payload.Amount)
 	if err != nil {
 		log.Errorf("error parsing amount: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusBadRequest, er(requestID, "invalid amount"))
