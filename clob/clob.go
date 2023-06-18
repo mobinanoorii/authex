@@ -28,6 +28,10 @@ func NewPool(matches chan *model.Match) *Pool {
 	}
 }
 
+func (p *Pool) Close() {
+	close(p.Inbound)
+}
+
 func (p *Pool) Run() {
 	for {
 		select {
@@ -41,6 +45,12 @@ func (p *Pool) Run() {
 	}
 }
 
+func (p *Pool) OpenMarket(market string) {
+	if _, ok := p.markets[market]; !ok {
+		p.markets[market] = ob.NewOrderBook()
+	}
+}
+
 func (p *Pool) handleOrder(r *model.SignedRequest[model.Order]) {
 	// get the order book for the symbol
 	orderBook, ok := p.markets[r.Payload.Market]
@@ -48,8 +58,6 @@ func (p *Pool) handleOrder(r *model.SignedRequest[model.Order]) {
 		orderBook = ob.NewOrderBook()
 		p.markets[r.Payload.Market] = orderBook
 	}
-	// NOW UPDATE THE DATABASE
-
 	// if it is a cancel order, cancel it
 	if r.Payload.Side == model.CancelOrder {
 		orderBook.CancelOrder(r.Payload.ID)
@@ -86,12 +94,25 @@ func (p *Pool) handleOrder(r *model.SignedRequest[model.Order]) {
 	go p.ProcessMatches(r, done, partial)
 }
 
-func (p *Pool) ProcessMatches(r *model.SignedRequest[model.Order] , done []*ob.Order, partial *ob.Order) {
+func (p *Pool) ProcessMatches(r *model.SignedRequest[model.Order], done []*ob.Order, partial *ob.Order) {
 	log.Info("Processing matches")
-	// for _, order := range done {
-	// 	p.Matches <- model.NewMatch(r, order.ID(), order.Price())
-	// }
-	// if partial != nil {
-	// 	p.Matches <- model.NewMatch(r, partial.ID(), partial.Price())
-	// }
+	for _, order := range done {
+		log.Infof("Matched order DONE %s price %s", order.ID(), order.Price())
+	}
+	if partial != nil {
+		log.Infof("Matched order PARTIAL %s price %s", partial.ID(), partial.Price())
+		// p.Matches <- model.NewMatch(r, partial.ID(), partial.Price())
+	}
+}
+
+func (p *Pool) GetOrderBook(market string) string {
+	x := p.markets[market]
+	a, b := x.Depth()
+	for _, o := range a {
+		log.Infof("ASK %s %s", o.Price, o.Quantity)
+	}
+	for _, o := range b {
+		log.Infof("BID %s %s", o.Price, o.Quantity)
+	}
+	return p.markets[market].String()
 }

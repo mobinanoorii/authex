@@ -122,7 +122,6 @@ func fund(url, signer, account, asset, amount string) error {
 		Signature: signature,
 		Payload:   f,
 	}
-	fmt.Printf("sending request: %#v", r)
 	// send the request
 	code, data, err := helpers.Post(fmt.Sprintf("%s/fund", restBaseURL), r)
 	if err != nil {

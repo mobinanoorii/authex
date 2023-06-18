@@ -1,7 +1,6 @@
 PACKAGES="./..."
 # build paramters 
 BUILD_FOLDER = dist
-APP_VERSION = $(git describe --tags --always)
 
 ###############################################################################
 ###                           Basic Golang Commands                         ###

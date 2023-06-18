@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
 
@@ -75,17 +74,17 @@ type Settings struct {
 // Rest API types
 // -----------------------------------------------------------------------------
 
-
 type MarketInfo struct {
 	// Market is the market of the exchange
 	Address string `json:"address,omitempty"`
 	// RecordedAt is the time the order was received, populated by the server
 	RecordedAt time.Time `json:"recorded_at,omitempty"`
 	// Base is the base token
-	Base Token `json:"base,omitempty"`
+	Base Asset `json:"base,omitempty"`
 	// Quote is the quote token
-	Quote Token `json:"quote,omitempty"`
+	Quote Asset `json:"quote,omitempty"`
 	// TODO: add dept and prices
+	OrderBook string `json:"order_book,omitempty"`
 }
 
 // SignedRequest is a generic request with a signature
@@ -114,6 +113,7 @@ const (
 )
 
 // Order is the CLOB order
+// The order is always relative to the quote asset
 type Order struct {
 	// ID is UUID of the order, populated by the server
 	ID string `json:"id,omitempty"`
@@ -195,14 +195,14 @@ type BalanceDelta struct {
 	// Address is the address of the account
 	Address string `json:"address,omitempty"`
 	// Amount is the amount of the change
-	Amount *big.Int `json:"amount,omitempty"`
+	Amount decimal.Decimal `json:"amount,omitempty"`
 }
 
 func (bd BalanceDelta) String() string {
 	return fmt.Sprintf("%s: %s", bd.Address, bd.Amount.String())
 }
 
-func NewBalanceDelta(address string, amount *big.Int) *BalanceDelta {
+func NewBalanceDelta(address string, amount decimal.Decimal) *BalanceDelta {
 	return &BalanceDelta{
 		Address: address,
 		Amount:  amount,
@@ -234,50 +234,50 @@ func NewMatch(o *SignedRequest[Order], ids []string, prices []decimal.Decimal) *
 }
 
 // Token is the token of the exchange
-type Token struct {
+type Asset struct {
 	// Symbol is the symbol of the token
 	Symbol string `json:"symbol,omitempty"`
 	// Address is the address of the token
 	// If the token is an ERC20 token, it's the address of the token contract
 	// If the token is an off-chain token, it's the hash of the token symbol
 	Address string `json:"address,omitempty"`
-	// AssetType is the type of the asset
+	// Class is the type of the asset
 	// it will be either "erc20" or "offchain"
-	AssetType string `json:"asset_type,omitempty"`
+	Class string `json:"class,omitempty"`
 }
 
-func (t Token) String() string {
+func (t Asset) String() string {
 	return fmt.Sprintf("%s:%s", t.Symbol, t.Address)
 }
 
 // IsERC20 returns true if the token is an ERC20 token
-func (t *Token) IsERC20() bool {
-	return t.AssetType == AssetERC20
+func (t *Asset) IsERC20() bool {
+	return t.Class == AssetERC20
 }
 
 // NewToken is a helper function to create a new token
-func NewToken(symbol, address string, assetType string) *Token {
-	return &Token{
-		Symbol:    symbol,
-		Address:   address,
-		AssetType: assetType,
+func NewToken(symbol, address string, assetClass string) *Asset {
+	return &Asset{
+		Symbol:  symbol,
+		Address: address,
+		Class:   assetClass,
 	}
 }
 
 // NewERC20Token is a helper function to create a new ERC20 token
-func NewERC20Token(symbol, address string) *Token {
-	return &Token{
-		Symbol:    symbol,
-		Address:   address,
-		AssetType: AssetERC20,
+func NewERC20Token(symbol, address string) *Asset {
+	return &Asset{
+		Symbol:  symbol,
+		Address: address,
+		Class:   AssetERC20,
 	}
 }
 
 // NewOffChainAsset is a helper function to create a new off-chain token
-func NewOffChainAsset(symbol string) *Token {
-	return &Token{
-		Symbol:    symbol,
-		Address:   helpers.AsAddress(strings.ToLower(symbol)),
-		AssetType: AssetOffChain,
+func NewOffChainAsset(symbol string) *Asset {
+	return &Asset{
+		Symbol:  symbol,
+		Address: helpers.AsAddress(strings.ToLower(symbol)),
+		Class:   AssetOffChain,
 	}
 }

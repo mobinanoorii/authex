@@ -46,7 +46,7 @@ var queryMarketCmd = &cobra.Command{
 
 func queryMarket(url, address string) error {
 	// send the request
-	code, data, err := helpers.Get(fmt.Sprintf("%s/market/%s", restBaseURL))
+	code, data, err := helpers.Get(fmt.Sprintf("%s/markets/%s", restBaseURL, address))
 	if err != nil {
 		fmt.Println("error getting markets:", err)
 		return err
@@ -68,9 +68,9 @@ var queryOrderCmd = &cobra.Command{
 
 func queryOrder(url, address string) error {
 	// send the request
-	code, data, err := helpers.Get(fmt.Sprintf("%s/order/%s", restBaseURL))
+	code, data, err := helpers.Get(fmt.Sprintf("%s/orders/%s", restBaseURL, address))
 	if err != nil {
-		fmt.Println("error getting markets:", err)
+		fmt.Println("error getting orders:", err)
 		return err
 	}
 	helpers.PrintResponse(code, data)

@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/labstack/gommon/log"
+	"github.com/shopspring/decimal"
 )
 
 // NodeClient is the client to interact with the ethereum node
@@ -139,11 +140,13 @@ func (n *NodeClient) monitorToken(address string, monitorID int) {
 
 			var deltas []*model.BalanceDelta
 			if t.From.Hex() == n.signer.Address.Hex() {
+				d := decimal.NewFromBigInt(t.Value.Neg(t.Value), 0)
 				// it's a withdrawal
-				deltas = append(deltas, model.NewBalanceDelta(t.From.Hex(), t.Value.Neg(t.Value)))
+				deltas = append(deltas, model.NewBalanceDelta(t.From.Hex(), d))
 			} else {
 				// is a deposit
-				deltas = append(deltas, model.NewBalanceDelta(t.To.Hex(), t.Value))
+				d := decimal.NewFromBigInt(t.Value, 0)
+				deltas = append(deltas, model.NewBalanceDelta(t.To.Hex(), d))
 			}
 			n.Transfers <- &model.BalanceChange{
 				TokenAddress: address,

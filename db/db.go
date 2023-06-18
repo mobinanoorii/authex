@@ -6,13 +6,16 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/gommon/log"
+	"github.com/shopspring/decimal"
+
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 )
 
 //go:embed schema.sql
@@ -33,6 +36,11 @@ func (c *Connection) Close() {
 
 func NewConnection(options *model.Settings) (*Connection, error) {
 	pool, err := pgxpool.New(context.Background(), options.DB.URI)
+	pool.Config().AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		// enable decimal support
+		pgxdecimal.Register(conn.TypeMap())
+		return nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +69,7 @@ func (c *Connection) Run() {
 				if err != nil {
 					log.Errorf("error starting transaction: %v", err)
 				}
-				q := `INSERT INTO balances (address, token_address, balance) VALUES ($1, $2, $3) ON CONFLICT (address, token_address) DO UPDATE SET balance = balances.balance + $3`
+				q := `INSERT INTO balances (address, asset_address, balance) VALUES ($1, $2, $3) ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $3`
 				for _, delta := range t.Deltas {
 					if _, err := tx.Exec(context.Background(), q, delta.Address, t.TokenAddress, delta.Amount); err != nil {
 						log.Errorf("error updating the recipient balance: %v", err)
@@ -70,8 +78,8 @@ func (c *Connection) Run() {
 					}
 				}
 				// update token block number
-				if _, err := tx.Exec(context.Background(), "UPDATE tokens SET last_block = $1 WHERE address = $2", t.BlockNumber, t.TokenAddress); err != nil {
-					log.Errorf("error updating the token block number: %v", err)
+				if _, err := tx.Exec(context.Background(), "UPDATE assets SET last_block = $1 WHERE address = $2", t.BlockNumber, t.TokenAddress); err != nil {
+					log.Errorf("error updating the asset block number: %v", err)
 					tx.Rollback(context.Background())
 					break
 				}
@@ -120,21 +128,21 @@ func Setup(options *model.Settings) error {
 }
 
 // SaveMarket saves a market to the database
-func (c *Connection) SaveMarket(marketAddress string, base, quote *model.Token) error {
+func (c *Connection) SaveMarket(marketAddress string, base, quote *model.Asset) error {
 	tx, err := c.pool.BeginTx(context.Background(), pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	_, err = tx.Exec(context.Background(),
-		`INSERT INTO tokens(address, symbol, asset_type)
-		VALUES ($1, $2, $3) ON CONFLICT (address) DO NOTHING`, base.Address, base.Symbol, base.AssetType)
+		`INSERT INTO assets(address, symbol, class)
+		VALUES ($1, $2, $3) ON CONFLICT (address) DO NOTHING`, base.Address, base.Symbol, base.Class)
 	if err != nil {
 		tx.Rollback(context.Background())
 		return err
 	}
 	_, err = tx.Exec(context.Background(),
-		`INSERT INTO tokens(address, symbol, asset_type)
-			VALUES ($1, $2, $3) ON CONFLICT (address) DO NOTHING`, quote.Address, quote.Symbol, quote.AssetType)
+		`INSERT INTO assets(address, symbol, class)
+			VALUES ($1, $2, $3) ON CONFLICT (address) DO NOTHING`, quote.Address, quote.Symbol, quote.Class)
 	if err != nil {
 		tx.Rollback(context.Background())
 		return err
@@ -155,10 +163,10 @@ func (c *Connection) GetMarkets() ([]*model.MarketInfo, error) {
 	var markets []*model.MarketInfo
 	q := `
 select m.address, m.recorded_at,
-b.symbol bs, b.address ba, b.asset_type bt,
-q.symbol qs, q.address qa, q.asset_type qt
-from markets m join tokens b on (m.base_address = b.address)
-join tokens q on (m.quote_address = q.address)
+b.symbol bs, b.address ba, b.class bt,
+q.symbol qs, q.address qa, q.class qt
+from markets m join assets b on (m.base_address = b.address)
+join assets q on (m.quote_address = q.address)
 order by m.recorded_at desc`
 	rows, err := c.pool.Query(context.Background(), q)
 	if err != nil {
@@ -169,8 +177,8 @@ order by m.recorded_at desc`
 		var market model.MarketInfo
 		if err := rows.Scan(
 			&market.Address, &market.RecordedAt,
-			&market.Base.Symbol, &market.Base.Address, &market.Base.AssetType,
-			&market.Quote.Symbol, &market.Quote.Address, &market.Quote.AssetType,
+			&market.Base.Symbol, &market.Base.Address, &market.Base.Class,
+			&market.Quote.Symbol, &market.Quote.Address, &market.Quote.Class,
 		); err != nil {
 			return nil, err
 		}
@@ -184,15 +192,15 @@ func (c *Connection) GetMarketByAddress(address string) (*model.MarketInfo, erro
 	var market model.MarketInfo
 	q := `
 select m.address, m.recorded_at,
-b.symbol bs, b.address ba, b.asset_type bt,
-q.symbol qs, q.address qa, q.asset_type qt
-from markets m join tokens b on (m.base_address = b.address)
-join tokens q on (m.quote_address = q.address)
+b.symbol bs, b.address ba, b.class bt,
+q.symbol qs, q.address qa, q.class qt
+from markets m join assets b on (m.base_address = b.address)
+join assets q on (m.quote_address = q.address)
 where m.address = $1`
 	err := c.pool.QueryRow(context.Background(), q, address).Scan(
 		&market.Address, &market.RecordedAt,
-		&market.Base.Symbol, &market.Base.Address, &market.Base.AssetType,
-		&market.Quote.Symbol, &market.Quote.Address, &market.Quote.AssetType,
+		&market.Base.Symbol, &market.Base.Address, &market.Base.Class,
+		&market.Quote.Symbol, &market.Quote.Address, &market.Quote.Class,
 	)
 	if err != nil {
 		return nil, err
@@ -208,8 +216,8 @@ func (c *Connection) IsAuthorized(address string) (active bool) {
 }
 
 // GetTokenAddresses returns the list of tokens addresses currently in the database
-func (c *Connection) GetTokenAddresses() ([]string, error) {
-	rows, err := c.pool.Query(context.Background(), "SELECT address FROM tokens")
+func (c *Connection) GetAssetAddressesByClass(class string) ([]string, error) {
+	rows, err := c.pool.Query(context.Background(), "SELECT address FROM assets WHERE class = $1", class)
 	if err != nil {
 		return nil, err
 	}
@@ -230,53 +238,68 @@ func (c *Connection) GetTokenAddresses() ([]string, error) {
 // by checking if the market exists and if the account
 // has enough balance to place the order
 func (c *Connection) ValidateOrder(order *model.Order, from string) error {
-	var market model.MarketInfo
-	err := c.pool.QueryRow(context.Background(), "SELECT base_address, quote_address FROM markets WHERE address = $1", order.Market).Scan(&market.Base.Address, &market.Quote.Address)
+	market, err := c.GetMarketByAddress(order.Market)
 	if err != nil {
 		return fmt.Errorf("market not found")
 	}
+
 	// check if the account has enough balance to place the order
-	size := big.NewInt(int64(order.Size))
+	size := decimal.NewFromInt(int64(order.Size))
 	price, err := helpers.ParseAmount(order.Price)
 	if err != nil {
 		return fmt.Errorf("invalid price")
 	}
 	// calculate the total amount
-	total := big.NewInt(0)
-	total.Mul(size, price)
+	total := price.Mul(size)
 
 	if order.Side == model.SideBid {
-		b, err := c.GetBalance(from, market.Quote.Address)
-		if err != nil {
-			return err
-		}
-		if total.Cmp(b) > 0 {
-			return fmt.Errorf("insufficient balance")
-		}
-	} else {
+		// check if the user has enough balance (always the base asset)
 		b, err := c.GetBalance(from, market.Base.Address)
 		if err != nil {
 			return err
 		}
-		if total.Cmp(b) > 0 {
-			return fmt.Errorf("insufficient balance")
+		if total.GreaterThan(b) {
+			return fmt.Errorf("insufficient %s balance", market.Base.Symbol)
+		}
+	} else {
+		// get the asset the user is offering (always the quote asset)
+		b, err := c.GetBalance(from, market.Quote.Address)
+		if err != nil {
+			return err
+		}
+		if total.GreaterThan(b) {
+			return fmt.Errorf("insufficient %s balance", market.Quote.Symbol)
 		}
 	}
-	return nil
+	// populate the order ID and RecordedAt
+	order.ID = uuid.New().String()
+
+	// if all is good insert the order
+	q := `INSERT INTO orders (id, market_address, from_address, side, price, size, recorded_at, submitted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err = c.pool.Exec(context.Background(), q, order.ID, market.Address, from, order.Side, price, order.Size, order.RecordedAt, order.SubmittedAt)
+	return err
 }
 
-func (c *Connection) GetBalance(address, token string) (*big.Int, error) {
-	b := big.NewInt(0)
-	err := c.pool.QueryRow(context.Background(), "SELECT balance FROM balances WHERE address = $1 AND token = $2", address, token).Scan(b)
+func (c *Connection) GetBalance(address, token string) (decimal.Decimal, error) {
+	var b decimal.Decimal
+	err := c.pool.QueryRow(context.Background(), "SELECT balance FROM balances WHERE address = $1 AND asset_address = $2", address, token).Scan(&b)
+	if err != nil && err == pgx.ErrNoRows {
+		return b, nil
+	}
 	return b, err
 }
 
 // GetOrder returns an order from the database
 func (c *Connection) GetOrder(id string) (*model.Order, error) {
 	var order model.Order
-	err := c.pool.QueryRow(context.Background(), "SELECT id, symbol, side, price, size FROM orders WHERE id = $1", id).Scan(&order.ID, &order.Market, &order.Side, &order.Price, &order.Size)
+
+	var price decimal.Decimal
+	err := c.pool.QueryRow(context.Background(), "SELECT id, market_address, side, price, size, recorded_at, submitted_at FROM orders WHERE id = $1", id).Scan(
+		&order.ID, &order.Market, &order.Side, &price, &order.Size, &order.RecordedAt, &order.SubmittedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
+	order.Price = price.String()
 	return &order, nil
 }

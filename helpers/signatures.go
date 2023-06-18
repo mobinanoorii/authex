@@ -23,6 +23,10 @@ func Sign(keystorePath, address string, msg any) (signature string, err error) {
 	}
 	if len(ks.Accounts()) == 1 {
 		signer = ks.Accounts()[0]
+		if signer.Address.String() != address {
+			err = fmt.Errorf("address %s does not match the keystore account", address)
+			return
+		}
 	} else {
 		for _, acc := range ks.Accounts() {
 			if acc.Address.String() == address {
@@ -66,9 +70,7 @@ func PasswordPrompt(account string) string {
 		fmt.Fprint(os.Stderr, label+" ")
 		b, _ := term.ReadPassword(int(syscall.Stdin))
 		s = string(b)
-		if s != "" {
-			break
-		}
+		break
 	}
 	fmt.Println()
 	return s

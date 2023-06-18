@@ -3,6 +3,7 @@ package cmd
 import (
 	"authex/helpers"
 	"authex/model"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -22,7 +23,7 @@ var withdrawCmd = &cobra.Command{
 	Use: "withdraw",
 }
 
-func order(URL string, from string, market string, symbol string, side string, size string, price string) error {
+func order(URL string, from string, market string, size string, price string, side string) error {
 	sizeUint, err := strconv.ParseUint(size, 10, 64)
 	if err != nil {
 		return err
@@ -36,7 +37,7 @@ func order(URL string, from string, market string, symbol string, side string, s
 	// sign the message
 	signature, err := helpers.Sign(options.Identity.KeystorePath, from, o)
 	if err != nil {
-		fmt.Println("error signing the message:", err)
+		err = errors.Join(errors.New("error signing the message"), err)
 		return err
 	}
 	r := &model.SignedRequest[model.Order]{
@@ -46,7 +47,7 @@ func order(URL string, from string, market string, symbol string, side string, s
 	// send the request
 	code, data, err := helpers.Post(fmt.Sprintf("%s/orders", URL), r)
 	if err != nil {
-		fmt.Println("error creating order:", err)
+		err = errors.Join(errors.New("error creating order"), err)
 		return err
 	}
 	helpers.PrintResponse(code, data)
@@ -54,42 +55,42 @@ func order(URL string, from string, market string, symbol string, side string, s
 }
 
 var askLimitCmd = &cobra.Command{
-	Use:     "ask <market-address> <asset> <size> <price>",
-	Aliases: []string{"ask-limit", "sell-limit", "sell"},
+	Use:     "ask <market-address> <size> <price>",
+	Aliases: []string{"ask-limit", "sell-limit", "sell", "offer"},
 	Short:   "Submit a new order",
-	Args:    cobra.ExactArgs(4),
+	Args:    cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return order(restBaseURL, from, args[0], args[1], model.SideAsk, args[2], args[3])
+		return order(restBaseURL, from, args[0], args[1], args[2], model.SideAsk)
 	},
 }
 
 var bidLimitCmd = &cobra.Command{
-	Use:     "bid <market-address> <asset> <size> <price>",
-	Aliases: []string{"bid-limit", "sell", "sell-limit"},
+	Use:     "bid <market-address> <size> <price>",
+	Aliases: []string{"bid-limit", "buy-limit", "buy"},
 	Short:   "Submit a new buy limit order",
-	Args:    cobra.ExactArgs(4),
+	Args:    cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return order(restBaseURL, from, args[0], args[1], model.SideBid, args[2], args[3])
+		return order(restBaseURL, from, args[0], args[1], args[2], model.SideBid)
 	},
 }
 
 var askMarketCmd = &cobra.Command{
-	Use:     "ask <market-address> <asset> <size>",
-	Aliases: []string{"ask-limit", "sell-limit", "sell"},
-	Short:   "Submit a new order",
-	Args:    cobra.ExactArgs(3),
+	Use:     "ask-market <market-address> <size>",
+	Aliases: []string{"ask-market", "sell-market", "offer-market"},
+	Short:   "Submit a new market order",
+	Args:    cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return order(restBaseURL, from, args[0], args[1], model.SideAsk, args[2], "")
+		return order(restBaseURL, from, args[0], args[1], "", model.SideAsk)
 	},
 }
 
 var bidMarketCmd = &cobra.Command{
-	Use:     "bid <market-address> <asset> <size>",
-	Aliases: []string{"bid-limit", "sell", "sell-limit"},
+	Use:     "bid-market <market-address> <size>",
+	Aliases: []string{"bid-market", "buy-market"},
 	Short:   "Submit a new buy limit order",
-	Args:    cobra.ExactArgs(3),
+	Args:    cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return order(restBaseURL, from, args[0], args[1], model.SideBid, args[2], "")
+		return order(restBaseURL, from, args[0], args[1], "", model.SideBid)
 	},
 }
 

@@ -6,6 +6,7 @@ require (
 	github.com/ethereum/go-ethereum v1.12.0
 	github.com/google/uuid v1.3.0
 	github.com/i25959341/orderbook v0.2.5
+	github.com/jackc/pgx-shopspring-decimal v0.0.0-20220624020537-1d36b5a1853e
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/labstack/echo/v4 v4.10.2
 	github.com/labstack/gommon v0.4.0

@@ -27,6 +27,7 @@ func init() {
 	// ADMIN
 	rootCmd.AddCommand(adminCmd)
 
+	adminCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", "./_private/keystore", "Path to the keystore directory")
 	adminCmd.PersistentFlags().StringVar(&from, "from", "", "the address to send the transaction from (must be an account in the keystore), only required when there is more than one account in the keystore")
 	adminCmd.PersistentFlags().StringVarP(&restBaseURL, "rest-url", "e", restBaseURL, "the base URL of the REST API")
 
@@ -36,6 +37,7 @@ func init() {
 
 	// ACCOUNT
 	rootCmd.AddCommand(accountCmd)
+	accountCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", "./_private/keystore", "Path to the keystore directory")
 	accountCmd.PersistentFlags().StringVar(&from, "from", "", "the address to send the transaction from (must be an account in the keystore), only required when there is more than one account in the keystore")
 	accountCmd.PersistentFlags().StringVarP(&restBaseURL, "rest-url", "e", restBaseURL, "the base URL of the REST API")
 
@@ -51,6 +53,7 @@ func init() {
 
 	serverCmd.PersistentFlags().StringVarP(&options.DB.URI, "database-uri", "d", "postgres://app:app@localhost:5432/authex", "Database URI")
 	viper.BindPFlag("DB.URI", serverCmd.PersistentFlags().Lookup("database-uri"))
+	serverCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", "./_private/keystore", "Path to the keystore directory")
 	serverCmd.PersistentFlags().StringVarP(&options.Identity.KeyFile, "keyfile", "f", "_private/UTC--2023-03-26T09-46-49.997099000Z--e2fb069045dfb19f3dd2b95a5a09d6f62984932d", "Encrypted private key file to import")
 	serverCmd.PersistentFlags().StringVarP(&options.Identity.Password, "password", "p", "puravida", "Password for key file (or use env var 'KEYFILEPWD')")
 
@@ -80,8 +83,6 @@ var rootCmd = &cobra.Command{
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(v string) error {
 	options.Version = v
-
-	serverCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", "./_private/keystore", "Path to the keystore directory")
 
 	rootCmd.Version = options.Version
 	return rootCmd.Execute()

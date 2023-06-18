@@ -3,12 +3,13 @@ package helpers
 import (
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	"sort"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 // IsEmpty check if a string is empty
@@ -39,24 +40,31 @@ func AsAddress(input string) string {
 	return "0x" + hex.EncodeToString(h[12:])
 }
 
-func ComputeMarketID(baseAddress string, quoteAddress string) string {
+func ComputeMarketAddress(baseAddress string, quoteAddress string) (string, error) {
 	address := []string{baseAddress, quoteAddress}
 	sort.Strings(address)
 	var market []byte
 	for _, a := range address {
-		// TODO handle error
-		b, _ := hex.DecodeString(a)
+		b, err := hex.DecodeString(strings.ToLower(strings.TrimPrefix(a, "0x")))
+		if err != nil {
+			return "", err
+		}
 		market = append(market, b...)
 	}
 	h := crypto.Keccak256(market)
-	return "0x" + hex.EncodeToString(h[12:])
+	return fmt.Sprint("0x", hex.EncodeToString(h[12:])), nil
 }
 
-func ParseAmount(value string) (*big.Int, error) {
-	b, ok := new(big.Int).SetString(value, 10)
-	if !ok {
-		err := fmt.Errorf("cannot parse value %s to an amount", value)
-		return nil, err
+func ParseAmount(value string) (decimal.Decimal, error) {
+	b, err := decimal.NewFromString(value)
+	if err != nil {
+		return b, err
 	}
 	return b, nil
+}
+
+// IID generates a a unique incident id to be used in error logs
+// and that is returned to the user in the error response
+func IID() string {
+	return uuid.New().String()
 }

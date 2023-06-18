@@ -7,7 +7,6 @@ import (
 	"authex/network"
 	"authex/web"
 	"fmt"
-	"log"
 
 	"github.com/spf13/cobra"
 )
@@ -25,6 +24,7 @@ var startCmd = &cobra.Command{
 
 // runFunction create the new resolver driver from the options and start the server.
 func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
+
 	return func(_ *cobra.Command, _ []string) (err error) {
 		// open the database connection
 		db, err := db.NewConnection(options)
@@ -37,6 +37,16 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		// start the clob engine
 		clob := clob.NewPool(db.Matches)
 		go clob.Run()
+		// restore markets
+		markets, err := db.GetMarkets()
+		if err != nil {
+			err = fmt.Errorf("error getting the markets: %v", err)
+			return
+		}
+		for _, market := range markets {
+			clob.OpenMarket(market.Address)
+		}
+		// TODO: restore orders
 
 		// start the network client
 		nodeCli, err := network.NewNodeClient(options, db.Transfers)
@@ -46,7 +56,7 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		}
 		go nodeCli.Run()
 		// get the token list and send them to the node client
-		tokens, err := db.GetTokenAddresses()
+		tokens, err := db.GetAssetAddressesByClass(model.AssetERC20)
 		if err != nil {
 			err = fmt.Errorf("error getting the token list: %v", err)
 			return
@@ -76,11 +86,13 @@ func setup(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 		// open the database connection
 		err := db.Setup(options)
 		if err != nil {
-			log.Fatalf("error connecting to the database: %v", err)
+			fmt.Println("error connecting to the database")
+			return err
 		}
 		err = network.Setup(options)
 		if err != nil {
-			log.Fatalf("error in network setup: %v", err)
+			fmt.Println("error in network setup")
+			return err
 		}
 		return nil
 	}
