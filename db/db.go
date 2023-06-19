@@ -202,7 +202,7 @@ func (c *Connection) SaveMarket(marketAddress string, base, quote *model.Asset) 
 
 // GetMarkets returns all markets from the database
 func (c *Connection) GetMarkets() ([]*model.MarketInfo, error) {
-	var markets []*model.MarketInfo
+	var markets = make([]*model.MarketInfo, 0)
 	q := `
 select m.address, m.recorded_at,
 b.symbol bs, b.address ba, b.class bt,
@@ -353,16 +353,26 @@ func (c *Connection) GetBalance(address, token string) (decimal.Decimal, error) 
 }
 
 // GetOrder returns an order from the database
-func (c *Connection) GetOrder(id string) (*model.Order, error) {
-	var order model.Order
-
+func (c *Connection) GetOrder(id string) (order *model.Order, from, status string, err error) {
+	q := `
+	SELECT o.id, o.from_address, o.market_address, o.side, o.price, o.size, o.recorded_at, o.submitted_at,
+	COALESCE(m.status, 'open') AS status
+	FROM "orders" o
+	LEFT JOIN (
+		SELECT order_id, status
+		FROM "matches"
+		WHERE status = any($2)
+	) m ON m.order_id = o.id
+	WHERE o.id = $1
+	`
+	order = new(model.Order)
 	var price decimal.Decimal
-	err := c.pool.QueryRow(context.Background(), "SELECT id, market_address, side, price, size, recorded_at, submitted_at FROM orders WHERE id = $1", id).Scan(
-		&order.ID, &order.Market, &order.Side, &price, &order.Size, &order.RecordedAt, &order.SubmittedAt,
+	err = c.pool.QueryRow(context.Background(), q, id, model.ClosedStatuses).Scan(
+		&order.ID, &from, &order.Market, &order.Side, &price, &order.Size, &order.RecordedAt, &order.SubmittedAt, &status,
 	)
 	if err != nil {
-		return nil, err
+		return
 	}
 	order.Price = price.String()
-	return &order, nil
+	return
 }
