@@ -31,19 +31,20 @@ CREATE table IF NOT EXISTS "orders" (
     "market_address" char(42) NOT NULL REFERENCES "markets" ("address")
 );
 
--- DROP INDEX IF EXISTS "orders_index_address" ON "orders";
--- CREATE INDEX IF NOT EXISTS "orders_index_address" ON "orders" USING HASH (address);
-
--- DROP INDEX IF EXISTS "orders_index_side" ON orders;
--- CREATE INDEX IF NOT EXISTS "orders_index_side" ON "orders" USING HASH (side);
-
-
 DROP table if exists "matches" CASCADE;
 CREATE table if not exists "matches" (
-    "top" char(36) NOT NULL,
-    "bottom" char(36) NOT NULL,
-    "price" numeric(10, 2) NOT NULL -- TODO: what precision do we need for price?
+    "id" char(36) NOT NULL,
+    "order_id" char(36) NOT NULL REFERENCES "orders" ("id"),
+    "price" numeric(78) NOT NULL,
+    "size" int NOT NULL,
+    "side" char(10) NOT NULL,
+    "matched_at" timestamp NOT NULL,
+    "status" char(10) NOT NULL,
+    PRIMARY KEY ("id", "order_id")
 );
+
+CREATE INDEX "matches_index_order_id" ON "matches" USING btree ("order_id");
+CREATE INDEX "matches_index_status" ON "matches" USING btree ("status");
 
 DROP table if exists "balances" CASCADE;
 CREATE table if not exists "balances" (

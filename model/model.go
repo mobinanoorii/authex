@@ -17,6 +17,20 @@ const (
 	AssetERC20    = "erc20"
 )
 
+// Match status
+const (
+	StatusFilled    = "filled"
+	StatusCancelled = "cancelled"
+	StatusOpen      = "open"
+	StatusPartial   = "partial"
+)
+
+// ErrMarketNotFound is returned when the market is not found
+var ErrMarketNotFound = fmt.Errorf("market not found")
+
+// ErrOrderNotFound is returned when the order is not found
+var ErrOrderNotFound = fmt.Errorf("order not found")
+
 // -----------------------------------------------------------------------------
 // Server settings
 // -----------------------------------------------------------------------------
@@ -220,17 +234,14 @@ type BalanceChange struct {
 
 // Match is the result of a match between two orders
 type Match struct {
-	Request *SignedRequest[Order] `json:"order_request,omitempty"`
-	IDs     []string              `json:"id,omitempty"`
-	Prices  []decimal.Decimal     `json:"price,omitempty"`
-}
-
-func NewMatch(o *SignedRequest[Order], ids []string, prices []decimal.Decimal) *Match {
-	return &Match{
-		Request: o,
-		IDs:     ids,
-		Prices:  prices,
-	}
+	// ID is the UUID of the match, that is the id of the order that triggered the match
+	ID      string          `json:"id,omitempty"`
+	OrderID string          `json:"order_id,omitempty"`
+	Price   decimal.Decimal `json:"price,omitempty"`
+	Size    decimal.Decimal `json:"size,omitempty"`
+	Time    time.Time       `json:"time,omitempty"`
+	Side    string          `json:"side,omitempty"`
+	Status  string          `json:"status,omitempty"`
 }
 
 // Token is the token of the exchange

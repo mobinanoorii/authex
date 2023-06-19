@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -40,7 +41,6 @@ type AuthexServer struct {
 
 // RestEndpoint is a REST endpoint
 type RestEndpoint struct {
-	Name    string
 	Method  string
 	Path    string
 	Help    string
@@ -92,7 +92,6 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 
 	r.endpoints = []RestEndpoint{
 		{
-			Name:    "pause",
 			Path:    "/admin/pause",
 			Method:  http.MethodPost,
 			Handler: r.pause,
@@ -100,7 +99,6 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 		},
 		{
 			// register a new market
-			Name:    "register",
 			Path:    "/markets",
 			Method:  http.MethodPost,
 			Handler: r.registerMarket,
@@ -134,42 +132,36 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 		},
 		{
 
-			Name:    "Post order",
 			Path:    "/orders",
 			Method:  http.MethodPost,
 			Handler: r.postOrder,
 			Help:    "Post a new buy or sell order",
 		},
 		{
-			Name:    "Cancel order",
 			Path:    "/orders/cancel",
 			Method:  http.MethodPost,
 			Handler: r.cancelOrder,
 			Help:    "Cancel an order",
 		},
 		{
-			Name:    "Withdraw",
 			Path:    "/withdraw",
 			Method:  http.MethodPost,
 			Handler: r.withdraw,
 			Help:    "Withdraw funds from the CLOB",
 		},
 		{
-			Name:    "Get order",
 			Path:    "/orders/:id",
 			Method:  http.MethodGet,
 			Handler: r.getOrder,
 			Help:    "Get an order by id",
 		},
 		{
-			Name:    "Get orders",
 			Path:    "/account/:address/orders",
 			Method:  http.MethodGet,
 			Handler: r.getOrder,
 			Help:    "Get all orders for an account",
 		},
 		{
-			Name:    "Get balance",
 			Path:    "/account/:address/balance/:symbol",
 			Method:  http.MethodGet,
 			Handler: r.getOrder,
@@ -446,10 +438,18 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 		log.Errorf("error validating order: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order"))
 	}
-
-	// check if the market exists and check the balances
+	// it's a market order or a limit order?
+	var quote decimal.Decimal
+	if h.IsEmpty(req.Payload.Price) {
+		size := decimal.NewFromInt(int64(req.Payload.Size))
+		quote, err = r.clobCli.GetQuote(req.Payload.Market, req.Payload.Side, size)
+		if err != nil {
+			log.Errorf("error getting quote: %v, [incident: %s]", err, requestID)
+			return c.JSON(http.StatusBadRequest, er(requestID, "order cannot be processed"))
+		}
+	}
 	// TODO this modifies the order (assign the ID), refactor
-	if err := r.dbCli.ValidateOrder(&req.Payload, sender); err != nil {
+	if err := r.dbCli.ValidateOrder(&req.Payload, sender, quote); err != nil {
 		log.Errorf("error validating order on db: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order"))
 	}

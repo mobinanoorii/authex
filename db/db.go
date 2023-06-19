@@ -104,12 +104,58 @@ func (c *Connection) Run() {
 }
 
 func (c *Connection) handleMatch(m *model.Match) {
-	// NOW UPDATE THE DATABASE
-	_, err := c.pool.Exec(context.Background(), "INSERT INTO orders (id, symbol, side, price, size) VALUES ($1, $2, $3, $4, $5)",
-		m.Request.Payload.ID, m.Request.Payload.Market, m.Request.Payload.Side, m.Request.Payload.Price, m.Request.Payload.Size)
+	tx, err := c.pool.BeginTx(context.Background(), pgx.TxOptions{})
 	if err != nil {
+		log.Errorf("error starting transaction: %v", err)
 		return
 	}
+	// insert into matches
+	q := `INSERT INTO matches
+	(id, order_id, price, size, side, matched_at, status)
+	VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err = tx.Exec(context.Background(), q, m.ID, m.OrderID, m.Price, m.Size, m.Side, m.Time, m.Status)
+	if err != nil {
+		log.Errorf("error inserting match: %v", err)
+		tx.Rollback(context.Background())
+		return
+	}
+	// update orders
+	quote := m.Price.Mul(m.Size)
+	// update balances
+	switch m.Side {
+	case model.SideBid:
+		q = `
+		WITH order_details AS (
+			SELECT o.from_address, m.base_address, m.quote_address
+			FROM orders o JOIN markets m ON o.market_address = m.address
+			WHERE o.id = $1
+		)
+		INSERT INTO balances (address, asset_address, balance)
+		SELECT from_address, quote_address, $2
+		FROM order_details
+		ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $2`
+	case model.SideAsk:
+		q = `
+		WITH order_details AS (
+			SELECT o.from_address, m.base_address, m.quote_address
+			FROM orders o JOIN markets m ON o.market_address = m.address
+			WHERE o.id = $1
+		)
+		INSERT INTO balances (address, asset_address, balance)
+		SELECT from_address, base_address, $2
+		FROM order_details
+		ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $2`
+	default:
+		log.Errorf("unknown side: %s", m.Side)
+		tx.Rollback(context.Background())
+		return
+	}
+	_, err = tx.Exec(context.Background(), q, m.OrderID, quote)
+	if err != nil {
+		log.Errorf("handleMatch - error updating balance: %v", err)
+		tx.Rollback(context.Background())
+	}
+	tx.Commit(context.Background())
 }
 
 // Setup the database, open a connection and create the database schema
@@ -233,46 +279,67 @@ func (c *Connection) GetAssetAddressesByClass(class string) ([]string, error) {
 // ValidateOrder checks if an order is valid
 // by checking if the market exists and if the account
 // has enough balance to place the order
-func (c *Connection) ValidateOrder(order *model.Order, from string) error {
+func (c *Connection) ValidateOrder(order *model.Order, from string, quote decimal.Decimal) error {
 	market, err := c.GetMarketByAddress(order.Market)
 	if err != nil {
 		return fmt.Errorf("market not found")
 	}
 
-	// check if the account has enough balance to place the order
-	size := decimal.NewFromInt(int64(order.Size))
-	price, err := helpers.ParseAmount(order.Price)
-	if err != nil {
-		return fmt.Errorf("invalid price")
+	var price decimal.Decimal
+	if quote.IsZero() { // it's a limit order, calculate the total amount
+		// it's a limit order, calculate the total amount
+		size := decimal.NewFromInt(int64(order.Size))
+		price, err := helpers.ParseAmount(order.Price)
+		if err != nil {
+			return fmt.Errorf("invalid price")
+		}
+		// calculate the total amount
+		quote = price.Mul(size)
 	}
-	// calculate the total amount
-	total := price.Mul(size)
 
-	if order.Side == model.SideBid {
-		// check if the user has enough balance (always the base asset).
-		b, err := c.GetBalance(from, market.Base.Address)
-		if err != nil {
-			return err
-		}
-		if total.GreaterThan(b) {
-			return fmt.Errorf("insufficient %s balance", market.Base.Symbol)
-		}
-	} else {
-		// get the asset the user is offering (always the quote asset)
-		b, err := c.GetBalance(from, market.Quote.Address)
-		if err != nil {
-			return err
-		}
-		if total.GreaterThan(b) {
-			return fmt.Errorf("insufficient %s balance", market.Quote.Symbol)
-		}
+	// open a transaction
+	tx, err := c.pool.Begin(context.Background())
+	if err != nil {
+		return err
 	}
+
+	var (
+		newBalance  decimal.Decimal
+		targetAsset string
+	)
+
+	switch order.Side {
+	case model.SideBid:
+		targetAsset = market.Base.Address
+	case model.SideAsk:
+		targetAsset = market.Quote.Address
+	default:
+		return fmt.Errorf("invalid order side")
+	}
+
+	q := `UPDATE balances SET balance = balance - $1 WHERE address = $2 AND asset_address = $3 returning balance`
+	err = tx.QueryRow(context.Background(), q, quote, from, targetAsset).Scan(&newBalance)
+	if err != nil {
+		tx.Rollback(context.Background())
+		return err
+	}
+	if newBalance.IsNegative() {
+		tx.Rollback(context.Background())
+		return fmt.Errorf("insufficient %s balance", targetAsset)
+	}
+
 	// populate the order ID and RecordedAt
 	order.ID = uuid.New().String()
 
 	// if all is good insert the order
-	q := `INSERT INTO orders (id, market_address, from_address, side, price, size, recorded_at, submitted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err = c.pool.Exec(context.Background(), q, order.ID, market.Address, from, order.Side, price, order.Size, order.RecordedAt, order.SubmittedAt)
+	q = `INSERT INTO orders (id, market_address, from_address, side, price, size, recorded_at, submitted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err = tx.Exec(context.Background(), q, order.ID, market.Address, from, order.Side, price, order.Size, order.RecordedAt, order.SubmittedAt)
+	if err != nil {
+		tx.Rollback(context.Background())
+		return err
+	}
+
+	tx.Commit(context.Background())
 	return err
 }
 
