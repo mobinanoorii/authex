@@ -20,6 +20,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
+	"github.com/shopspring/decimal"
 )
 
 //go:embed index.html
@@ -107,23 +108,25 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 		},
 		{
 			// register a new market
-			Name:    "register",
 			Path:    "/markets",
 			Method:  http.MethodGet,
 			Handler: r.getMarkets,
 			Help:    "Get all markets",
 		},
 		{
-			// register a new market
-			Name:    "register",
 			Path:    "/markets/:address",
 			Method:  http.MethodGet,
 			Handler: r.getMarketByAddress,
 			Help:    "Get a market by address",
 		},
 		{
+			Path:    "/markets/:address/quote/:side/:size",
+			Method:  http.MethodGet,
+			Handler: r.getMarketQuote,
+			Help:    "Get a market quote",
+		},
+		{
 			// register a new market
-			Name:    "fund",
 			Path:    "/fund",
 			Method:  http.MethodPost,
 			Handler: r.fund,
@@ -493,6 +496,34 @@ func (r AuthexServer) getOrder(c echo.Context) error {
 
 func (r AuthexServer) withdraw(c echo.Context) error {
 	return c.JSON(http.StatusNotImplemented, er(c.Get(keyRequestID).(string), "not implemented"))
+}
+
+// getMarketQuote returns the current quote for a given market
+func (r AuthexServer) getMarketQuote(c echo.Context) error {
+	requestID := c.Get(keyRequestID).(string)
+	market := c.Param("address")
+	side := c.Param("side")
+
+	size, err := h.ParseAmount(c.Param("size"))
+	if err != nil {
+		log.Errorf("error parsing size: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid size"))
+	}
+	quote, err := r.clobCli.GetQuote(market, side, size)
+	if err != nil {
+		if errors.Is(err, model.ErrMarketNotFound) {
+			log.Errorf("error getting quote: %v, [incident: %s]", err, requestID)
+			return c.JSON(http.StatusNotFound, er(requestID, "market not found"))
+		}
+		log.Errorf("error getting quote: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusNotFound, er(requestID, "quote not available"))
+	}
+	return c.JSON(http.StatusOK, ok(requestID,
+		withData("quote", quote),
+		withData("market", market),
+		withData("side", side),
+		withData("size", size)),
+	)
 }
 
 func (r AuthexServer) index(c echo.Context) error {

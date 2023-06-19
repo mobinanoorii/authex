@@ -76,3 +76,24 @@ func queryOrder(url, address string) error {
 	helpers.PrintResponse(code, data)
 	return nil
 }
+
+var queryMarketQuoteCmd = &cobra.Command{
+	Use:     "quote <market-address> <side> <size>",
+	Short:   "Get a quote for a market",
+	Args:    cobra.ExactArgs(3),
+	Example: `authex query quote 0x123... buy 100`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return queryMarketQuote(restBaseURL, args[0], args[1], args[2])
+	},
+}
+
+func queryMarketQuote(url, market, side, size string) error {
+	// send the request
+	code, data, err := helpers.Get(fmt.Sprint(url, "/markets/", market, "/quote/", side, "/", size))
+	if err != nil {
+		println("error getting quote:", err)
+		return err
+	}
+	helpers.PrintResponse(code, data)
+	return nil
+}

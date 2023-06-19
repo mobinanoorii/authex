@@ -22,6 +22,7 @@ func initCmd() {
 	queryCmd.AddCommand(queryMarketsCmd)
 	queryCmd.AddCommand(queryMarketCmd)
 	queryCmd.AddCommand(queryOrderCmd)
+	queryCmd.AddCommand(queryMarketQuoteCmd)
 
 	// ADMIN
 	rootCmd.AddCommand(adminCmd)

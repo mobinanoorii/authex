@@ -114,3 +114,18 @@ func (p *Pool) GetOrderBook(market string) string {
 	}
 	return p.markets[market].String()
 }
+
+// GetQuote returns the best bid and ask prices for a given market
+func (p *Pool) GetQuote(market, side string, size decimal.Decimal) (price decimal.Decimal, err error) {
+	orderBook, ok := p.markets[market]
+	if !ok {
+		err = model.ErrMarketNotFound
+		return
+	}
+	obSide := ob.Buy
+	if side == model.SideAsk {
+		obSide = ob.Sell
+	}
+	price, err = orderBook.CalculateMarketPrice(obSide, size)
+	return
+}
