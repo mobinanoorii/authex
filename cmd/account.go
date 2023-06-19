@@ -20,7 +20,17 @@ var accountCmd = &cobra.Command{
 }
 
 var withdrawCmd = &cobra.Command{
-	Use: "withdraw",
+	Use:     "withdraw",
+	Short:   `Withdraw tokens from the exchange.`,
+	Example: `authex account withdraw <asset-address> <amount>`,
+	Args:    cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withdraw(restBaseURL, args[0], args[1])
+	},
+}
+
+func withdraw(url string, asset string, amount string) error {
+	return fmt.Errorf("not implemented yet")
 }
 
 func order(url string, from string, market string, size string, price string, side string) error {
