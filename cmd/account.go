@@ -35,7 +35,7 @@ func order(url string, from string, market string, size string, price string, si
 		Price:  price,
 	}
 	// sign the message
-	signature, err := helpers.Sign(options.Identity.KeystorePath, from, o)
+	signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, o)
 	if err != nil {
 		err = errors.Join(errors.New("error signing the message"), err)
 		return err

@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	restBaseURL = "http://127.0.0.1:2306"
-	from        string // the address to send the transaction from
+	restBaseURL    = "http://127.0.0.1:2306"
+	from           string // the address to send the transaction from
+	nonInteractive bool
 )
 
 func initCmd() {
@@ -30,6 +31,8 @@ func initCmd() {
 	adminCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", "./_private/keystore", "Path to the keystore directory")
 	adminCmd.PersistentFlags().StringVar(&from, "from", "", "the address to send the transaction from (must be an account in the keystore), only required when there is more than one account in the keystore")
 	adminCmd.PersistentFlags().StringVarP(&restBaseURL, "rest-url", "e", restBaseURL, "the base URL of the REST API")
+	adminCmd.PersistentFlags().StringVarP(&options.Identity.Password, "password", "w", "", "the password to unlock the sender account")
+	adminCmd.PersistentFlags().BoolVarP(&nonInteractive, "non-interactive", "n", false, "commands will not prompt for input (password)")
 
 	adminCmd.AddCommand(registerMarketCmd)
 	adminCmd.AddCommand(authorizeCmd)
@@ -40,6 +43,8 @@ func initCmd() {
 	accountCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", "./_private/keystore", "Path to the keystore directory")
 	accountCmd.PersistentFlags().StringVar(&from, "from", "", "the address to send the transaction from (must be an account in the keystore), only required when there is more than one account in the keystore")
 	accountCmd.PersistentFlags().StringVarP(&restBaseURL, "rest-url", "e", restBaseURL, "the base URL of the REST API")
+	accountCmd.PersistentFlags().StringVarP(&options.Identity.Password, "password", "w", "", "the password to unlock the sender account")
+	accountCmd.PersistentFlags().BoolVarP(&nonInteractive, "non-interactive", "n", false, "commands will not prompt for input (password)")
 
 	accountCmd.AddCommand(bidLimitCmd)
 	accountCmd.AddCommand(bidMarketCmd)

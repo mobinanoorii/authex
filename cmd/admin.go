@@ -52,7 +52,8 @@ func registerMarket(options *model.Settings) func(_ *cobra.Command, _ []string) 
 			m.QuoteAddress = quote[1]
 		}
 		// sign the message
-		signature, err := helpers.Sign(options.Identity.KeystorePath, from, m)
+
+		signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, m)
 		if err != nil {
 			println("error signing the message:", err)
 			return err
@@ -109,7 +110,7 @@ func fund(url, signer, account, asset, amount string) error {
 		Amount:  amount,
 	}
 	// sign the message
-	signature, err := helpers.Sign(options.Identity.KeystorePath, signer, f)
+	signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, f)
 	if err != nil {
 		println("error signing the message:", err)
 		return err

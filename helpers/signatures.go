@@ -13,7 +13,14 @@ import (
 	"golang.org/x/term"
 )
 
-func Sign(keystorePath, address string, msg any) (signature string, err error) {
+func Sign(keystorePath, address, password string, promptPassword bool, msg any) (signature string, err error) {
+	if promptPassword {
+		password = PasswordPrompt(address)
+	}
+	return doSign(keystorePath, address, password, msg)
+}
+
+func doSign(keystorePath, address, password string, msg any) (signature string, err error) {
 	ks := keystore.NewKeyStore(keystorePath, keystore.StandardScryptN, keystore.StandardScryptP)
 	var signer accounts.Account
 	// get the account
@@ -40,8 +47,7 @@ func Sign(keystorePath, address string, msg any) (signature string, err error) {
 		}
 	}
 	// unlock the account
-	pass := PasswordPrompt(signer.Address.String())
-	if err = ks.Unlock(signer, pass); err != nil {
+	if err = ks.Unlock(signer, password); err != nil {
 		println("error unlocking account:", err)
 		return
 	}
