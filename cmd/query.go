@@ -24,7 +24,7 @@ var queryMarketsCmd = &cobra.Command{
 
 func queryMarkets(url string) error {
 	// send the request
-	code, data, err := helpers.Get(fmt.Sprint(url, "/markets"))
+	code, data, err := helpers.Get(fmt.Sprint(url, "/query/markets"))
 	if err != nil {
 		println("error getting markets:", err)
 		return err
@@ -46,7 +46,7 @@ var queryMarketCmd = &cobra.Command{
 
 func queryMarket(url, address string) error {
 	// send the request
-	code, data, err := helpers.Get(fmt.Sprint(url, "/markets/", address))
+	code, data, err := helpers.Get(fmt.Sprint(url, "/query/markets/", address))
 	if err != nil {
 		println("error getting markets:", err)
 		return err
@@ -68,7 +68,7 @@ var queryOrderCmd = &cobra.Command{
 
 func queryOrder(url, address string) error {
 	// send the request
-	code, data, err := helpers.Get(fmt.Sprint(url, "/orders/", address))
+	code, data, err := helpers.Get(fmt.Sprint(url, "/query/orders/", address))
 	if err != nil {
 		println("error getting orders:", err)
 		return err
@@ -89,7 +89,7 @@ var queryMarketQuoteCmd = &cobra.Command{
 
 func queryMarketQuote(url, market, side, size string) error {
 	// send the request
-	code, data, err := helpers.Get(fmt.Sprint(url, "/markets/", market, "/quote/", side, "/", size))
+	code, data, err := helpers.Get(fmt.Sprint(url, "/query/markets/", market, "/quote/", side, "/", size))
 	if err != nil {
 		println("error getting quote:", err)
 		return err

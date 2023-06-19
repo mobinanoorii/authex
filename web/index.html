@@ -39,8 +39,9 @@
         }
 
         .list {
-            margin-top: 50px;
+
             text-align: left;
+            justify-content: left;
             display: inline-block;
             padding: 20px;
         }
@@ -54,6 +55,23 @@
         li {
             margin-bottom: 10px;
         }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        .t1 {
+            width: 10%;
+        }
+
+        .t2 {
+            width: 40%;
+        }
+
+        .t3 {
+            width: 50%;
+        }
     </style>
 </head>
 
@@ -66,11 +84,24 @@
 
     </div>
     <div class="list">
-        <ul>
-            {{range $endpoint := .Endpoints}}
-            <li><strong>{{$endpoint.Path}}</strong> - {{$endpoint.Help}} </li>
+        {{range $group := .Endpoints}}
+        <h3>{{$group.Help}}</h3>
+        <table>
+            <tr>
+                <th class="t1">Method</th>
+                <th class="t2">Path</th>
+                <th class="t3">Help</th>
+            </tr>
+            {{range $route := $group.Routes}}
+            <tr>
+                <td>{{$route.Method}}</td>
+                <td>{{$group.Path}}{{$route.Path}}</td>
+                <td>{{$route.Help}}</td>
+            </tr>
             {{end}}
-        </ul>
+
+        </table>
+        {{end}}
     </div>
 </body>
 

@@ -39,7 +39,7 @@ CREATE table if not exists "matches" (
     "size" int NOT NULL,
     "side" char(10) NOT NULL,
     "matched_at" timestamp NOT NULL,
-    "status" char(10) NOT NULL,
+    "status" varchar(10) NOT NULL,
     PRIMARY KEY ("id", "order_id")
 );
 

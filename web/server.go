@@ -29,18 +29,22 @@ var indexHTML string
 
 // AuthexServer is the main server for the CLOB
 type AuthexServer struct {
-	opts          *model.Settings
-	echo          *echo.Echo
-	runtime       *Runtime
-	endpoints     []RestEndpoint
-	indexTemplate *template.Template
-	clobCli       *clob.Pool
-	nodeCli       *network.NodeClient
-	dbCli         *db.Connection
+	opts    *model.Settings
+	echo    *echo.Echo
+	runtime *Runtime
+	clobCli *clob.Pool
+	nodeCli *network.NodeClient
+	dbCli   *db.Connection
 }
 
-// RestEndpoint is a REST endpoint
-type RestEndpoint struct {
+// Endpoint is a REST endpoint
+type Endpoint struct {
+	Help   string
+	Path   string
+	Routes []Route
+}
+
+type Route struct {
 	Method  string
 	Path    string
 	Help    string
@@ -85,94 +89,127 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 	// start listening for events
 
 	r.runtime = NewRuntime(opts.Version)
-	r.indexTemplate, err = template.New("index").Parse(indexHTML)
+
+	groups := []Endpoint{
+		{
+			Help: "Administration endpoints",
+			Path: "/admin",
+			Routes: []Route{
+				{
+					Path:    "/markets",
+					Method:  http.MethodPost,
+					Handler: r.registerMarket,
+					Help:    "Register a new market (requires admin privileges)",
+				},
+				{
+					Path:    "/accounts/fund",
+					Method:  http.MethodPost,
+					Handler: r.fund,
+					Help:    "Fund an account (requires admin privileges)",
+				},
+				{
+					Path:    "/accounts/allow",
+					Method:  http.MethodPost,
+					Handler: r.fund,
+					Help:    "Add an account to the allowed list (requires admin privileges)",
+				},
+				{
+					Path:    "/accounts/block",
+					Method:  http.MethodPost,
+					Handler: r.fund,
+					Help:    "Remove an account from the allowed list (requires admin privileges)",
+				},
+			},
+		},
+		{
+			Help: "Query endpoints",
+			Path: "/query",
+			Routes: []Route{
+				{
+					Path:    "/markets",
+					Method:  http.MethodGet,
+					Handler: r.getMarkets,
+					Help:    "Get all markets",
+				},
+				{
+					Path:    "/markets/:address",
+					Method:  http.MethodGet,
+					Handler: r.getMarketByAddress,
+					Help:    "Get a market by address",
+				},
+				{
+					Path:    "/markets/:address/quote/:side/:size",
+					Method:  http.MethodGet,
+					Handler: r.getMarketQuote,
+					Help:    "Get a market quote",
+				},
+				{
+					Path:    "/orders/:id",
+					Method:  http.MethodGet,
+					Handler: r.getOrder,
+					Help:    "Get an order by id",
+				},
+			},
+		},
+		{
+			Help: "Account endpoints",
+			Path: "/account",
+			Routes: []Route{
+				{
+
+					Path:    "/orders",
+					Method:  http.MethodPost,
+					Handler: r.postOrder,
+					Help:    "Post a new buy or sell order",
+				},
+				{
+					Path:    "/orders/cancel",
+					Method:  http.MethodPost,
+					Handler: r.cancelOrder,
+					Help:    "Cancel an order",
+				},
+				{
+					Path:    "/withdraw",
+					Method:  http.MethodPost,
+					Handler: r.withdraw,
+					Help:    "Withdraw funds from the CLOB",
+				},
+				{
+					Path:    "/orders/:id",
+					Method:  http.MethodGet,
+					Handler: r.getOrder,
+					Help:    "Get an order by id",
+				},
+				{
+					Path:    "/:address/orders",
+					Method:  http.MethodGet,
+					Handler: r.getOrder,
+					Help:    "Get all orders for an account",
+				},
+				{
+					Path:    "/:address/balance/:symbol",
+					Method:  http.MethodGet,
+					Handler: r.getOrder,
+					Help:    "Get the balance of an account for a symbol",
+				},
+			},
+		},
+	}
+
+	indexTemplate, err := template.New("index").Parse(indexHTML)
 	if err != nil {
 		return r, err
 	}
 
-	r.endpoints = []RestEndpoint{
-		{
-			Path:    "/admin/pause",
-			Method:  http.MethodPost,
-			Handler: r.pause,
-			Help:    "Pause the CLOB, no new orders will be accepted",
-		},
-		{
-			// register a new market
-			Path:    "/markets",
-			Method:  http.MethodPost,
-			Handler: r.registerMarket,
-			Help:    "Register a new market",
-		},
-		{
-			// register a new market
-			Path:    "/markets",
-			Method:  http.MethodGet,
-			Handler: r.getMarkets,
-			Help:    "Get all markets",
-		},
-		{
-			Path:    "/markets/:address",
-			Method:  http.MethodGet,
-			Handler: r.getMarketByAddress,
-			Help:    "Get a market by address",
-		},
-		{
-			Path:    "/markets/:address/quote/:side/:size",
-			Method:  http.MethodGet,
-			Handler: r.getMarketQuote,
-			Help:    "Get a market quote",
-		},
-		{
-			// register a new market
-			Path:    "/fund",
-			Method:  http.MethodPost,
-			Handler: r.fund,
-			Help:    "Fund an account",
-		},
-		{
+	r.echo.GET("/", func(c echo.Context) error {
+		return index(c, indexTemplate, r.runtime, groups)
+	})
 
-			Path:    "/orders",
-			Method:  http.MethodPost,
-			Handler: r.postOrder,
-			Help:    "Post a new buy or sell order",
-		},
-		{
-			Path:    "/orders/cancel",
-			Method:  http.MethodPost,
-			Handler: r.cancelOrder,
-			Help:    "Cancel an order",
-		},
-		{
-			Path:    "/withdraw",
-			Method:  http.MethodPost,
-			Handler: r.withdraw,
-			Help:    "Withdraw funds from the CLOB",
-		},
-		{
-			Path:    "/orders/:id",
-			Method:  http.MethodGet,
-			Handler: r.getOrder,
-			Help:    "Get an order by id",
-		},
-		{
-			Path:    "/account/:address/orders",
-			Method:  http.MethodGet,
-			Handler: r.getOrder,
-			Help:    "Get all orders for an account",
-		},
-		{
-			Path:    "/account/:address/balance/:symbol",
-			Method:  http.MethodGet,
-			Handler: r.getOrder,
-			Help:    "Get the balance of an account for a symbol",
-		},
-	}
-
-	r.echo.GET("/", r.index)
-
-	for _, endpoint := range r.endpoints {
-		r.echo.Match([]string{endpoint.Method}, endpoint.Path, endpoint.Handler)
+	for _, group := range groups {
+		g := r.echo.Group(group.Path)
+		for _, endpoint := range group.Routes {
+			g.Match([]string{endpoint.Method}, endpoint.Path, endpoint.Handler)
+		}
 	}
 
 	return r, nil
@@ -263,11 +300,6 @@ func (r AuthexServer) isAdmin(c echo.Context, signature string, payload model.Se
 		return c.JSON(http.StatusUnauthorized, er(requestID, "only the admin can perform this action"))
 	}
 	return nil
-}
-
-func (r AuthexServer) pause(c echo.Context) error {
-	// Only the admin can pause the CLOB
-	return c.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
 }
 
 func (r AuthexServer) registerMarket(c echo.Context) error {
@@ -433,6 +465,7 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 		log.Errorf("error validating order: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusBadRequest, er(requestID, "order is older than 2 seconds"))
 	}
+
 	// validate the order
 	if err := req.Payload.Validate(); err != nil {
 		log.Errorf("error validating order: %v, [incident: %s]", err, requestID)
@@ -461,13 +494,13 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 
 func (r AuthexServer) cancelOrder(c echo.Context) error {
 	requestID := c.Get(keyRequestID).(string)
-	or := &model.SignedRequest[model.Order]{}
-	if err := c.Bind(or); err != nil {
+	req := &model.SignedRequest[model.Order]{}
+	if err := c.Bind(req); err != nil {
 		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order request"))
 	}
 	// extract the address from the signature
-	sender, err := extractAddress(or.Signature, or.Payload)
+	sender, err := extractAddress(req.Signature, req.Payload)
 	if err != nil {
 		log.Errorf("error extracting account address: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusUnauthorized, er(requestID, "error extracting account address"))
@@ -476,22 +509,38 @@ func (r AuthexServer) cancelOrder(c echo.Context) error {
 		log.Errorf("error authorizing address: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
 	}
-	or.Payload.Side = model.CancelOrder
+
+	// handle cancel orders
+	_, from, status, err := r.dbCli.GetOrder(req.Payload.ID)
+	if err != nil {
+		log.Errorf("error getting order: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order"))
+	}
+	if from != sender {
+		log.Errorf("error order owner and request sender mismatch, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
+	}
+	if status != model.StatusOpen {
+		log.Errorf("error order is filled, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "processed"))
+	}
 	// queue the order for processing
-	r.clobCli.Inbound <- or
-	// reply with the order
-	return c.JSON(http.StatusOK, ok(requestID, withMsg("scheduled"), withData(keyOrderID, or.Payload.ID)))
+	r.clobCli.Inbound <- req
+	return c.JSON(http.StatusOK, ok(requestID, withData(keyOrderID, req.Payload.ID), withMsg("scheduled")))
 }
 
 func (r AuthexServer) getOrder(c echo.Context) error {
 	requestID := c.Get(keyRequestID).(string)
 	orderID := c.Param("id")
-	order, err := r.dbCli.GetOrder(orderID)
+	order, _, status, err := r.dbCli.GetOrder(orderID)
 	if err != nil {
 		log.Errorf("error getting order: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusNotFound, er(requestID, "order not found"))
 	}
-	return c.JSON(http.StatusOK, ok(requestID, withData("order", order)))
+	return c.JSON(http.StatusOK, ok(requestID,
+		withData("order", order),
+		withData("status", status),
+	))
 }
 
 func (r AuthexServer) withdraw(c echo.Context) error {
@@ -526,12 +575,12 @@ func (r AuthexServer) getMarketQuote(c echo.Context) error {
 	)
 }
 
-func (r AuthexServer) index(c echo.Context) error {
+func index(c echo.Context, template *template.Template, runtime *Runtime, endpoints []Endpoint) error {
 	var bb bytes.Buffer
-	if err := r.indexTemplate.Execute(&bb, struct {
+	if err := template.Execute(&bb, struct {
 		Runtime   *Runtime
-		Endpoints []RestEndpoint
-	}{r.runtime, r.endpoints}); err != nil {
+		Endpoints []Endpoint
+	}{runtime, endpoints}); err != nil {
 		return c.HTML(http.StatusInternalServerError, "ERROR")
 	}
 	return c.HTML(http.StatusOK, bb.String())

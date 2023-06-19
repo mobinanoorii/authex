@@ -25,6 +25,14 @@ const (
 	StatusPartial   = "partial"
 )
 
+// Statuses that are considered closed for an order
+var (
+	ClosedStatuses = []string{
+		StatusFilled,
+		StatusCancelled,
+	}
+)
+
 // ErrMarketNotFound is returned when the market is not found
 var ErrMarketNotFound = fmt.Errorf("market not found")
 

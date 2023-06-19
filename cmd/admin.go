@@ -31,66 +31,58 @@ var registerMarketCmd = &cobra.Command{
 	The base token is the token that is being bought or sold, and the quote token is the token that is used to pay for the base token.
 	`,
 	Example: `authex register-market BASET QUOTET:0x1234...`,
-	RunE:    registerMarket(options),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return registerMarket(restBaseURL, args[0], args[1])
+	},
 }
 
-func registerMarket(options *model.Settings) func(_ *cobra.Command, _ []string) error {
-	return func(_ *cobra.Command, args []string) (err error) {
-		// base token
-		base := strings.Split(args[0], ":")
-		// quote token
-		quote := strings.Split(args[1], ":")
+func registerMarket(url, baseStr, quoteStr string) (err error) {
+	// base token
+	base := strings.Split(baseStr, ":")
+	// quote token
+	quote := strings.Split(quoteStr, ":")
 
-		m := model.Market{
-			BaseSymbol:  base[0],
-			QuoteSymbol: quote[0],
-		}
-		if len(base) > 1 {
-			m.BaseAddress = base[1]
-		}
-		if len(quote) > 1 {
-			m.QuoteAddress = quote[1]
-		}
-		// sign the message
-
-		signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, m)
-		if err != nil {
-			println("error signing the message:", err)
-			return err
-		}
-
-		mr := &model.SignedRequest[model.Market]{
-			Signature: signature,
-			Payload:   m,
-		}
-
-		// send the request
-		code, data, err := helpers.Post(fmt.Sprintf("%s/markets", restBaseURL), mr)
-		if err != nil {
-			println("error creating market:", err)
-			return err
-		}
-		println("response code:", code)
-		println("response body:", data)
-		// open the database connection
-		return
+	m := model.Market{
+		BaseSymbol:  base[0],
+		QuoteSymbol: quote[0],
 	}
+	if len(base) > 1 {
+		m.BaseAddress = base[1]
+	}
+	if len(quote) > 1 {
+		m.QuoteAddress = quote[1]
+	}
+	// sign the message
+
+	signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, m)
+	if err != nil {
+		println("error signing the message:", err)
+		return err
+	}
+
+	mr := &model.SignedRequest[model.Market]{
+		Signature: signature,
+		Payload:   m,
+	}
+
+	// send the request
+	code, data, err := helpers.Post(fmt.Sprint(url, "/admin/markets"), mr)
+	if err != nil {
+		println("error creating market:", err)
+		return err
+	}
+	println("response code:", code)
+	println("response body:", data)
+	// open the database connection
+	return
 }
 
 // registerMarketCmd represents the registerMarket command.
 var authorizeCmd = &cobra.Command{
-	Use:   "authorize [account_address]",
-	Short: "Authorize a new account to trade",
-	Args:  cobra.ExactArgs(1),
-	Long: `A market is a pair of tokens or assets that can be traded together.
-
-	For example, the market ETH/USDT is the pair of tokens ETH and USDT.
-
-	Markets are identified by a base token and a quote token.
-	The base token is the token that is being bought or sold, and the quote token is the token that is used to pay for the base token.
-	`,
+	Use:     "authorize [account_address]",
+	Short:   "Authorize a new account to trade",
+	Args:    cobra.ExactArgs(1),
 	Example: `authex admin authorize 0x1234...`,
-	RunE:    registerMarket(options),
 }
 
 var fundCmd = &cobra.Command{
@@ -120,7 +112,7 @@ func fund(url, signer, account, asset, amount string) error {
 		Payload:   f,
 	}
 	// send the request
-	code, data, err := helpers.Post(fmt.Sprint(url, "/fund"), r)
+	code, data, err := helpers.Post(fmt.Sprint(url, "/admin/accounts/fund"), r)
 	if err != nil {
 		println("error funding account:", err)
 		return err

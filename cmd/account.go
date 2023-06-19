@@ -55,9 +55,34 @@ func order(url string, from string, market string, size string, price string, si
 		Payload:   o,
 	}
 	// send the request
-	code, data, err := helpers.Post(fmt.Sprint(url, "/orders"), r)
+	code, data, err := helpers.Post(fmt.Sprint(url, "/account/orders"), r)
 	if err != nil {
 		err = errors.Join(errors.New("error creating order"), err)
+		return err
+	}
+	helpers.PrintResponse(code, data)
+	return nil
+}
+
+func cancelOrder(url string, id string) error {
+	o := model.Order{
+		ID:   id,
+		Side: model.CancelOrder,
+	}
+	// sign the message
+	signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, o)
+	if err != nil {
+		err = errors.Join(errors.New("error signing the message"), err)
+		return err
+	}
+	r := &model.SignedRequest[model.Order]{
+		Signature: signature,
+		Payload:   o,
+	}
+	// send the request
+	code, data, err := helpers.Post(fmt.Sprint(url, "/account/orders/cancel"), r)
+	if err != nil {
+		err = errors.Join(errors.New("error cancelling order"), err)
 		return err
 	}
 	helpers.PrintResponse(code, data)
@@ -104,7 +129,12 @@ var bidMarketCmd = &cobra.Command{
 	},
 }
 
-var cancelCmd = &cobra.Command{
-	Use:   "cancel-order <order-id>",
-	Short: "Cancel an order",
+var cancelOrderCmd = &cobra.Command{
+	Use:     "cancel-order <order-id>",
+	Short:   "Cancel an order",
+	Aliases: []string{"cancel"},
+	Args:    cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return cancelOrder(restBaseURL, args[0])
+	},
 }

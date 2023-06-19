@@ -50,7 +50,7 @@ func initCmd() {
 	accountCmd.AddCommand(bidMarketCmd)
 	accountCmd.AddCommand(askLimitCmd)
 	accountCmd.AddCommand(askMarketCmd)
-	accountCmd.AddCommand(cancelCmd)
+	accountCmd.AddCommand(cancelOrderCmd)
 	accountCmd.AddCommand(withdrawCmd)
 
 	// SERVER

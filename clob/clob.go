@@ -91,41 +91,34 @@ func (p *Pool) handleOrder(r *model.SignedRequest[model.Order]) {
 			return
 		}
 	}
-	go p.ProcessMatches(r, done, partial)
-}
-
-func (p *Pool) ProcessMatches(r *model.SignedRequest[model.Order], done []*ob.Order, partial *ob.Order) {
-	log.Info("Processing matches")
-
-	orderToMatch := func(order *ob.Order, status string) *model.Match {
-		side := model.SideBid
-		if order.Side() == ob.Sell {
-			side = model.SideAsk
-		}
-
-		m := &model.Match{
-			ID:      r.Payload.ID,
-			OrderID: order.ID(),
-			Price:   order.Price(),
-			Size:    order.Quantity(),
-			Time:    order.Time(),
-			Side:    side,
-			Status:  status,
-		}
-		return m
-	}
-
 	for _, order := range done {
-		m := orderToMatch(order, model.StatusFilled)
-		log.Infof("Matched order DONE %s price %s", order.ID(), order.Price())
+		m := orderToMatch(r.Payload.ID, order, model.StatusFilled)
+		log.Debugf("Matched order DONE %s price %s", order.ID(), order.Price())
 		p.Matches <- m
 
 	}
 	if partial != nil {
-		m := orderToMatch(partial, model.StatusPartial)
-		log.Infof("Matched order PARTIAL %s price %s", partial.ID(), partial.Price())
+		m := orderToMatch(r.Payload.ID, partial, model.StatusPartial)
+		log.Debugf("Matched order PARTIAL %s price %s", partial.ID(), partial.Price())
 		p.Matches <- m
 	}
+}
+
+func orderToMatch(topID string, order *ob.Order, status string) *model.Match {
+	side := model.SideBid
+	if order.Side() == ob.Sell {
+		side = model.SideAsk
+	}
+	m := &model.Match{
+		ID:      topID,
+		OrderID: order.ID(),
+		Price:   order.Price(),
+		Size:    order.Quantity(),
+		Time:    order.Time(),
+		Side:    side,
+		Status:  status,
+	}
+	return m
 }
 
 func (p *Pool) GetOrderBook(market string) string {
