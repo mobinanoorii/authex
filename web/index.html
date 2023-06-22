@@ -7,9 +7,10 @@
     <title>AutHEx</title>
     <style>
         body {
-            background-color: #000000;
+            background-color: #111111;
             color: #FFFFFF;
             text-align: center;
+            font-family: 'Berkley Mono', 'Berkley Mono override', 'Courier New', Courier, monospace;
         }
 
         a,
@@ -44,6 +45,19 @@
             justify-content: left;
             display: inline-block;
             padding: 20px;
+
+        }
+
+        h2 {
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+            position: relative;
+            font-size: 1.3rem;
+            line-height: 1.4;
+            text-transform: uppercase;
+            margin-bottom: 1.8rem;
+            margin-top: 1.9rem;
         }
 
         ul {
@@ -59,6 +73,31 @@
         table {
             border-collapse: collapse;
             width: 100%;
+            border-bottom: 1px solid #FFFFFF;
+
+        }
+
+        th {
+            font-variation-settings: 'wght' 100;
+            color: inherit;
+            border-collapse: collapse;
+            margin: 0;
+            box-sizing: border-box;
+            position: relative;
+            padding: 9px 10px 8px 10px;
+            background: rgba(126, 126, 126, 0.2);
+            border-bottom: 1px solid #FFFFFF;
+        }
+
+        td {
+            font-variation-settings: 'wght' 100;
+            color: inherit;
+            text-align: left;
+            border-collapse: collapse;
+            padding: 4px 10px 4px 10px;
+            margin: 0;
+            box-sizing: border-box;
+            position: relative;
         }
 
         .t1 {
@@ -67,6 +106,7 @@
 
         .t2 {
             width: 40%;
+
         }
 
         .t3 {
@@ -85,7 +125,7 @@
     </div>
     <div class="list">
         {{range $group := .Endpoints}}
-        <h3>{{$group.Help}}</h3>
+        <h2>{{$group.Help}}</h2>
         <table>
             <tr>
                 <th class="t1">Method</th>
