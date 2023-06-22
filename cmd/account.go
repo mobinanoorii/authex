@@ -33,7 +33,7 @@ func withdraw(url string, asset string, amount string) error {
 	return fmt.Errorf("not implemented yet")
 }
 
-func order(url string, from string, market string, size string, price string, side string) error {
+func order(url string, market string, size string, price string, side string) error {
 	sizeUint, err := strconv.ParseUint(size, 10, 64)
 	if err != nil {
 		return err
@@ -45,7 +45,13 @@ func order(url string, from string, market string, size string, price string, si
 		Price:  price,
 	}
 	// sign the message
-	signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, o)
+	signature, err := helpers.Sign(
+		options.Identity.KeystorePath,
+		options.Identity.SignerAddress,
+		options.Identity.Password,
+		!nonInteractive,
+		o,
+	)
 	if err != nil {
 		err = errors.Join(errors.New("error signing the message"), err)
 		return err
@@ -65,19 +71,25 @@ func order(url string, from string, market string, size string, price string, si
 }
 
 func cancelOrder(url string, id string) error {
-	o := model.Order{
+	order := model.Order{
 		ID:   id,
 		Side: model.CancelOrder,
 	}
 	// sign the message
-	signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, o)
+	signature, err := helpers.Sign(
+		options.Identity.KeystorePath,
+		options.Identity.SignerAddress,
+		options.Identity.Password,
+		!nonInteractive,
+		order,
+	)
 	if err != nil {
 		err = errors.Join(errors.New("error signing the message"), err)
 		return err
 	}
 	r := &model.SignedRequest[model.Order]{
 		Signature: signature,
-		Payload:   o,
+		Payload:   order,
 	}
 	// send the request
 	code, data, err := helpers.Post(fmt.Sprint(url, "/account/orders/cancel"), r)
@@ -95,7 +107,7 @@ var askLimitCmd = &cobra.Command{
 	Short:   "Submit a new order",
 	Args:    cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return order(restBaseURL, from, args[0], args[1], args[2], model.SideAsk)
+		return order(restBaseURL, args[0], args[1], args[2], model.SideAsk)
 	},
 }
 
@@ -105,7 +117,7 @@ var bidLimitCmd = &cobra.Command{
 	Short:   "Submit a new buy limit order",
 	Args:    cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return order(restBaseURL, from, args[0], args[1], args[2], model.SideBid)
+		return order(restBaseURL, args[0], args[1], args[2], model.SideBid)
 	},
 }
 
@@ -115,7 +127,7 @@ var askMarketCmd = &cobra.Command{
 	Short:   "Submit a new market order",
 	Args:    cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return order(restBaseURL, from, args[0], args[1], "", model.SideAsk)
+		return order(restBaseURL, args[0], args[1], "", model.SideAsk)
 	},
 }
 
@@ -125,7 +137,7 @@ var bidMarketCmd = &cobra.Command{
 	Short:   "Submit a new buy limit order",
 	Args:    cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return order(restBaseURL, from, args[0], args[1], "", model.SideBid)
+		return order(restBaseURL, args[0], args[1], "", model.SideBid)
 	},
 }
 

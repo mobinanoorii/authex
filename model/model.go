@@ -70,8 +70,8 @@ type Settings struct {
 	Identity struct {
 		// KeystorePath is the path to the local keystore directory
 		KeystorePath string
-		// KeyFile is the name of the encrypted private key file to import
-		KeyFile string
+		// SignerAddress is the address of the signer account, it must be present in the keystore
+		SignerAddress string
 		// Password is the password for the key file
 		Password string
 		// AccessContractAddress is the address of the access control contract

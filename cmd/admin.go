@@ -42,19 +42,25 @@ func registerMarket(url, baseStr, quoteStr string) (err error) {
 	// quote token
 	quote := strings.Split(quoteStr, ":")
 
-	m := model.Market{
+	market := model.Market{
 		BaseSymbol:  base[0],
 		QuoteSymbol: quote[0],
 	}
 	if len(base) > 1 {
-		m.BaseAddress = base[1]
+		market.BaseAddress = base[1]
 	}
 	if len(quote) > 1 {
-		m.QuoteAddress = quote[1]
+		market.QuoteAddress = quote[1]
 	}
 	// sign the message
 
-	signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, m)
+	signature, err := helpers.Sign(
+		options.Identity.KeystorePath,
+		options.Identity.SignerAddress,
+		options.Identity.Password,
+		!nonInteractive,
+		market,
+	)
 	if err != nil {
 		println("error signing the message:", err)
 		return err
@@ -62,7 +68,7 @@ func registerMarket(url, baseStr, quoteStr string) (err error) {
 
 	mr := &model.SignedRequest[model.Market]{
 		Signature: signature,
-		Payload:   m,
+		Payload:   market,
 	}
 
 	// send the request
@@ -91,25 +97,31 @@ var fundCmd = &cobra.Command{
 	Args:    cobra.ExactArgs(3),
 	Example: `authex admin fund 0x1234... 0x1234... 1000`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return fund(restBaseURL, from, args[0], args[1], args[2])
+		return fund(restBaseURL, args[0], args[1], args[2])
 	},
 }
 
-func fund(url, signer, account, asset, amount string) error {
-	f := model.Funding{
+func fund(url, account, asset, amount string) error {
+	funding := model.Funding{
 		Account: account,
 		Asset:   asset,
 		Amount:  amount,
 	}
 	// sign the message
-	signature, err := helpers.Sign(options.Identity.KeystorePath, from, options.Identity.Password, !nonInteractive, f)
+	signature, err := helpers.Sign(
+		options.Identity.KeystorePath,
+		options.Identity.SignerAddress,
+		options.Identity.Password,
+		!nonInteractive,
+		funding,
+	)
 	if err != nil {
 		println("error signing the message:", err)
 		return err
 	}
 	r := &model.SignedRequest[model.Funding]{
 		Signature: signature,
-		Payload:   f,
+		Payload:   funding,
 	}
 	// send the request
 	code, data, err := helpers.Post(fmt.Sprint(url, "/admin/accounts/fund"), r)

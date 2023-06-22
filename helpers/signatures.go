@@ -22,35 +22,11 @@ func Sign(keystorePath, address, password string, promptPassword bool, msg any) 
 
 func doSign(keystorePath, address, password string, msg any) (signature string, err error) {
 	ks := keystore.NewKeyStore(keystorePath, keystore.StandardScryptN, keystore.StandardScryptP)
-	var signer accounts.Account
-	// get the account
-	if len(ks.Accounts()) == 0 {
-		err = fmt.Errorf("no accounts found in the keystore")
+	signer, err := UnlockAccount(ks, address, password)
+	if err != nil {
 		return
 	}
-	if len(ks.Accounts()) == 1 {
-		signer = ks.Accounts()[0]
-		if signer.Address.String() != address {
-			err = fmt.Errorf("address %s does not match the keystore account", address)
-			return
-		}
-	} else {
-		for _, acc := range ks.Accounts() {
-			if acc.Address.String() == address {
-				signer = acc
-				break
-			}
-		}
-		if signer.Address.String() == "" {
-			err = fmt.Errorf("no account found for address %s", address)
-			return
-		}
-	}
-	// unlock the account
-	if err = ks.Unlock(signer, password); err != nil {
-		println("error unlocking account:", err)
-		return
-	}
+	defer ks.Lock(signer.Address)
 	// prepare the message
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
@@ -63,6 +39,26 @@ func doSign(keystorePath, address, password string, msg any) (signature string, 
 		return
 	}
 	signature = hex.EncodeToString(sigBytes)
+	return
+}
+
+func UnlockAccount(ks *keystore.KeyStore, address, password string) (account accounts.Account, err error) {
+	// get the account
+	if len(ks.Accounts()) == 0 {
+		err = fmt.Errorf("no accounts found in the keystore")
+		return
+	}
+	for _, account = range ks.Accounts() {
+		if account.Address.String() == address {
+			// unlock the account
+			if err = ks.Unlock(account, password); err != nil {
+				err = fmt.Errorf("error unlocking account: %w", err)
+				return
+			}
+			return
+		}
+	}
+	err = fmt.Errorf("no account found in keystore for address %s", address)
 	return
 }
 

@@ -41,18 +41,14 @@ func NewNodeClient(settings *model.Settings, transfers chan *model.BalanceChange
 	if err != nil {
 		return nil, err
 	}
+
 	// open the keystore
 	ks := keystore.NewKeyStore(settings.Identity.KeystorePath, keystore.StandardScryptN, keystore.StandardScryptP)
-	if len(ks.Accounts()) == 0 {
-		jsonBytes, err := os.ReadFile(settings.Identity.KeyFile)
-		if err != nil {
-			return nil, err
-		}
-		_, err = ks.Import(jsonBytes, settings.Identity.Password, settings.Identity.Password)
-		if err != nil {
-			return nil, err
-		}
+	signer, err := helpers.UnlockAccount(ks, settings.Identity.SignerAddress, settings.Identity.Password)
+	if err != nil {
+		return nil, err
 	}
+
 	// Get the access control contract
 	address := common.HexToAddress(settings.Identity.AccessContractAddress)
 	ac, err := abi.NewAccessControl(address, client)
@@ -64,7 +60,7 @@ func NewNodeClient(settings *model.Settings, transfers chan *model.BalanceChange
 		keystore:        ks,
 		client:          client,
 		wsURL:           settings.Network.WSEndpoint,
-		signer:          ks.Accounts()[0],
+		signer:          signer,
 		accessControl:   ac,
 		monitoredTokens: map[string]int{},
 		Tokens:          make(chan string),
