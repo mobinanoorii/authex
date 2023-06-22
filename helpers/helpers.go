@@ -3,6 +3,7 @@ package helpers
 import (
 	"encoding/hex"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -67,4 +68,18 @@ func ParseAmount(value string) (decimal.Decimal, error) {
 // and that is returned to the user in the error response
 func IID() string {
 	return uuid.New().String()
+}
+
+func EnvStr(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
+
+func EnvBool(key string, fallback bool) bool {
+	if value, ok := os.LookupEnv(key); ok {
+		return strings.ToLower(value) == "true"
+	}
+	return fallback
 }

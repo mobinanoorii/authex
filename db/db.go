@@ -159,12 +159,25 @@ func (c *Connection) handleMatch(m *model.Match) {
 }
 
 // Setup the database, open a connection and create the database schema
-func Setup(options *model.Settings) error {
+func Setup(options *model.Settings, force bool) error {
 	conn, err := pgx.Connect(context.Background(), options.DB.URI)
 	if err != nil {
 		return err
 	}
 	defer conn.Close(context.Background())
+
+	// check if the schema exists
+	var schemaExists bool
+	q := `SELECT EXISTS (
+		SELECT 1 FROM information_schema.tables
+		WHERE table_schema = 'public' AND table_name = 'markets');`
+	err = conn.QueryRow(context.Background(), q).Scan(&schemaExists)
+	if err != nil {
+		return err
+	}
+	if schemaExists && !force {
+		return nil
+	}
 	_, err = conn.Exec(context.Background(), dbSchema)
 	return err
 }
