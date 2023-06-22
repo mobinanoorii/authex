@@ -97,3 +97,24 @@ func queryMarketQuote(url, market, side, size string) error {
 	helpers.PrintResponse(code, data)
 	return nil
 }
+
+var queryMarketPriceCmd = &cobra.Command{
+	Use:     "price <market-address>",
+	Short:   "Get the price of a market",
+	Args:    cobra.ExactArgs(1),
+	Example: `authex query price 0x123...`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return queryMarketPrice(restBaseURL, args[0])
+	},
+}
+
+func queryMarketPrice(url, market string) error {
+	// send the request
+	code, data, err := helpers.Get(fmt.Sprint(url, "/query/markets/", market, "/price"))
+	if err != nil {
+		println("error getting price:", err)
+		return err
+	}
+	helpers.PrintResponse(code, data)
+	return nil
+}

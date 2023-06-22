@@ -149,6 +149,12 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 					Handler: r.getOrder,
 					Help:    "Get an order by id",
 				},
+				{
+					Path:    "/markets/:address/price",
+					Method:  http.MethodGet,
+					Handler: r.getMarketPrice,
+					Help:    "Get all orders",
+				},
 			},
 		},
 		{
@@ -573,6 +579,22 @@ func (r AuthexServer) getMarketQuote(c echo.Context) error {
 		withData("side", side),
 		withData("size", size)),
 	)
+}
+
+// getMarketPrice returns the current price for a given market
+func (r AuthexServer) getMarketPrice(c echo.Context) error {
+	requestID := c.Get(keyRequestID).(string)
+	market := c.Param("address")
+	price, err := r.dbCli.GetMarketPrice(market)
+	if err != nil {
+		if errors.Is(err, model.ErrMarketNotFound) {
+			log.Errorf("error getting price: %v, [incident: %s]", err, requestID)
+			return c.JSON(http.StatusNotFound, er(requestID, "market not found"))
+		}
+		log.Errorf("error getting price: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusNotFound, er(requestID, "price not available"))
+	}
+	return c.JSON(http.StatusOK, ok(requestID, withData("price", price)))
 }
 
 func index(c echo.Context, template *template.Template, runtime *Runtime, endpoints []Endpoint) error {

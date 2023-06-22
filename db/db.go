@@ -376,3 +376,14 @@ func (c *Connection) GetOrder(id string) (order *model.Order, from, status strin
 	order.Price = price.String()
 	return
 }
+
+// GetMarketPrice returns the current market price
+// it uses the VWAP (Volume Weighted Average Price) formula
+func (c *Connection) GetMarketPrice(market string) (price decimal.Decimal, err error) {
+	qVWAP := `
+	SELECT sum(m.price * m.size)::numeric / sum(m.size)::numeric as vwap
+	FROM matches m JOIN orders o ON m.order_id = o.id
+	WHERE m.status = 'filled' AND o.market_address = $1`
+	err = c.pool.QueryRow(context.Background(), qVWAP, market).Scan(&price)
+	return price, err
+}
