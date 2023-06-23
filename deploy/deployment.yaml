@@ -15,7 +15,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       containers:
-        - image: us-central1-docker.pkg.dev/elesto/elesto/resolver-driver:1.0
+        - image: ghcr.io/noandrea/authex:latest
           imagePullPolicy: Always
           name: application
           env:
