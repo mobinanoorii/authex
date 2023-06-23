@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/noandrea/authex/compare/v0.4.0...v0.5.0) (2023-06-23)
+
+
+### Features
+
+* initialize the database on startup (if dose not exists ) ([aed16ed](https://github.com/noandrea/authex/commit/aed16edb6dab026919dca6afe2648954bcab594f))
+
 ## [0.4.0](https://github.com/noandrea/authex/compare/v0.3.1...v0.4.0) (2023-06-23)
 
 
