@@ -10,7 +10,7 @@ permissions:
   contents: write
   pull-requests: write
   packages: write
-  
+
 
 jobs:
   release:
@@ -52,6 +52,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      -
+        name: Import GPG key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v4
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v4
         if: steps.release-please.outputs.release_created
@@ -60,3 +67,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ORG : ${{ github.repository_owner }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
