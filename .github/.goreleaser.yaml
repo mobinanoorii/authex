@@ -74,6 +74,7 @@ docker_manifests:
       - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Version }}-arm64v8
 nfpms:
   - id: packages
+    maintainer: "Andrea Giacobino <no.andrea@gmail.com>"
     # Formats to be generated.
     formats:
       - deb
