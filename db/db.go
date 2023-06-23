@@ -165,17 +165,33 @@ func Setup(options *model.Settings, force bool) error {
 		return err
 	}
 	defer conn.Close(context.Background())
+	return createSchema(conn, force)
+}
 
+func (c *Connection) InitializeSchema() error {
+	conn, err := c.pool.Acquire(context.Background())
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	if err := createSchema(conn.Conn(), false); err != nil {
+		return err
+	}
+	return nil
+}
+
+// createSchema creates the database schema, optionally overwriting it
+func createSchema(conn *pgx.Conn, overwrite bool) error {
 	// check if the schema exists
 	var schemaExists bool
 	q := `SELECT EXISTS (
 		SELECT 1 FROM information_schema.tables
 		WHERE table_schema = 'public' AND table_name = 'markets');`
-	err = conn.QueryRow(context.Background(), q).Scan(&schemaExists)
+	err := conn.QueryRow(context.Background(), q).Scan(&schemaExists)
 	if err != nil {
 		return err
 	}
-	if schemaExists && !force {
+	if schemaExists && !overwrite {
 		return nil
 	}
 	_, err = conn.Exec(context.Background(), dbSchema)

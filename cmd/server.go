@@ -32,6 +32,12 @@ func start(options *model.Settings) func(_ *cobra.Command, _ []string) error {
 			err = fmt.Errorf("error connecting to the database: %w", err)
 			return
 		}
+		// initialize the database
+		err = db.InitializeSchema()
+		if err != nil {
+			err = fmt.Errorf("error initializing the database: %w", err)
+			return
+		}
 		go db.Run()
 
 		// start the clob engine
