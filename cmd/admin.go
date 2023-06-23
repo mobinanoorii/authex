@@ -14,8 +14,9 @@ import (
 // -----------------------------------------------------------------------------
 
 var adminCmd = &cobra.Command{
-	Use:   "admin",
-	Short: "Group of admin commands",
+	Use:              "admin",
+	Short:            "Group of admin commands",
+	PersistentPreRun: requireFromAddress,
 }
 
 // registerMarketCmd represents the registerMarket command.

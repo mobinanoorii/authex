@@ -3,26 +3,18 @@ package cmd
 import (
 	"authex/clob"
 	"authex/db"
-	"authex/helpers"
 	"authex/model"
 	"authex/network"
 	"authex/web"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
 
 var serverCmd = &cobra.Command{
-	Use:   "server",
-	Short: "Group of server commands",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// check that the from address is set
-		if helpers.IsEmpty(options.Identity.SignerAddress) {
-			fmt.Println("error: signer address is not set, use the --signer-address flag to set the address")
-			os.Exit(1)
-		}
-	},
+	Use:              "server",
+	Short:            "Group of server commands",
+	PersistentPreRun: requireFromAddress,
 }
 
 var startCmd = &cobra.Command{

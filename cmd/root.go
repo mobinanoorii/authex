@@ -3,6 +3,8 @@ package cmd
 import (
 	"authex/helpers"
 	"authex/model"
+	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -122,4 +124,12 @@ func Execute(v string) error {
 	initCmd()
 	rootCmd.Version = options.Version
 	return rootCmd.Execute()
+}
+
+func requireFromAddress(cmd *cobra.Command, args []string) {
+	// check that the from address is set
+	if helpers.IsEmpty(options.Identity.SignerAddress) {
+		fmt.Println("error: signer address is not set, use the --from flag to set the address")
+		os.Exit(1)
+	}
 }

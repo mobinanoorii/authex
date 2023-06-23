@@ -15,8 +15,9 @@ import (
 // -----------------------------------------------------------------------------
 
 var accountCmd = &cobra.Command{
-	Use:   "account",
-	Short: "Group of user commands",
+	Use:              "account",
+	Short:            "Group of user commands",
+	PersistentPreRun: requireFromAddress,
 }
 
 var withdrawCmd = &cobra.Command{
