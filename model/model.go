@@ -196,6 +196,7 @@ func (m Market) Serialize() ([]byte, error) {
 	return json.Marshal(m)
 }
 
+// Funding is the the message to fund an account
 type Funding struct {
 	// Account is the address of the account
 	Account string `json:"address,omitempty"`
@@ -207,6 +208,19 @@ type Funding struct {
 
 func (f Funding) Serialize() ([]byte, error) {
 	return json.Marshal(f)
+}
+
+// Authorization is the the message to authorize an account
+type Authorization struct {
+	// Account is the address of the account
+	Account string `json:"address,omitempty"`
+	// Authorized is the authorization status, if true the account is authorized
+	// if false the account is de-authorized
+	Authorized bool `json:"authorized,omitempty"`
+}
+
+func (a Authorization) Serialize() ([]byte, error) {
+	return json.Marshal(a)
 }
 
 // ---------------------------

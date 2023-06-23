@@ -99,25 +99,19 @@ func NewAuthexServer(opts *model.Settings, clobCli *clob.Pool, nodeCli *network.
 					Path:    "/markets",
 					Method:  http.MethodPost,
 					Handler: r.registerMarket,
-					Help:    "Register a new market (requires admin privileges)",
+					Help:    "Register a new market",
 				},
 				{
 					Path:    "/accounts/fund",
 					Method:  http.MethodPost,
 					Handler: r.fund,
-					Help:    "Fund an account (requires admin privileges)",
+					Help:    "Fund an account",
 				},
 				{
-					Path:    "/accounts/allow",
+					Path:    "/accounts/authorize",
 					Method:  http.MethodPost,
-					Handler: r.fund,
-					Help:    "Add an account to the allowed list (requires admin privileges)",
-				},
-				{
-					Path:    "/accounts/block",
-					Method:  http.MethodPost,
-					Handler: r.fund,
-					Help:    "Remove an account from the allowed list (requires admin privileges)",
+					Handler: r.handleAuthorization,
+					Help:    "Add/remove an account to the access list",
 				},
 			},
 		},
@@ -435,6 +429,28 @@ func (r AuthexServer) fund(c echo.Context) error {
 		},
 	}
 	r.dbCli.Transfers <- bc
+	return c.JSON(http.StatusOK, ok(requestID, withMsg("scheduled")))
+}
+
+// fund adds funds to the an account
+func (r AuthexServer) handleAuthorization(c echo.Context) error {
+	// generate a new request id to be used in logging
+	requestID := c.Get(keyRequestID).(string)
+	req := &model.SignedRequest[model.Authorization]{}
+	if err := c.Bind(req); err != nil {
+		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusBadRequest, er(requestID, "invalid authorization request"))
+	}
+	// admin only
+	if err := r.isAdmin(c, req.Signature, req.Payload); err != nil {
+		log.Errorf("error authorizing account: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
+	}
+	if err := r.dbCli.SetAuthorization(req.Payload.Account, req.Payload.Authorized); err != nil {
+		log.Errorf("error authorizing account: %v, [incident: %s]", err, requestID)
+		return c.JSON(http.StatusInternalServerError, er(requestID, "error authorizing account"))
+	}
+	// extract the address from the signature
 	return c.JSON(http.StatusOK, ok(requestID, withMsg("scheduled")))
 }
 

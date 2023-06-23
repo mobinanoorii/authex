@@ -62,19 +62,20 @@ func initCmd() {
 	rootCmd.AddCommand(adminCmd)
 
 	adminCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", envKeystorePath, "Path to the keystore directory")
-	adminCmd.PersistentFlags().StringVarP(&options.Identity.SignerAddress, "from", "f", envSignerAddress, "the address to send the transaction from (must be an account in the keystore), only required when there is more than one account in the keystore")
+	adminCmd.PersistentFlags().StringVarP(&options.Identity.SignerAddress, "from", "f", envSignerAddress, "the address to send the transaction from (must be an account in the keystore)")
 	adminCmd.PersistentFlags().StringVarP(&restBaseURL, "rest-url", "e", envRestBaseURL, "the base URL of the REST API")
 	adminCmd.PersistentFlags().StringVarP(&options.Identity.Password, "password", "p", envKeyFilePwd, "the password to unlock the sender account")
 	adminCmd.PersistentFlags().BoolVarP(&nonInteractive, "non-interactive", "n", envNonInteractive, "commands will not prompt for input (password)")
 
 	adminCmd.AddCommand(registerMarketCmd)
-	adminCmd.AddCommand(authorizeCmd)
+	adminCmd.AddCommand(grantAccessCmd)
+	adminCmd.AddCommand(revokeAccessCmd)
 	adminCmd.AddCommand(fundCmd)
 
 	// ACCOUNT
 	rootCmd.AddCommand(accountCmd)
 	accountCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", envKeystorePath, "Path to the keystore directory")
-	accountCmd.PersistentFlags().StringVarP(&options.Identity.SignerAddress, "from", "f", envSignerAddress, "the address to send the transaction from (must be an account in the keystore), only required when there is more than one account in the keystore")
+	accountCmd.PersistentFlags().StringVarP(&options.Identity.SignerAddress, "from", "f", envSignerAddress, "the address to send the transaction from (must be an account in the keystore)")
 	accountCmd.PersistentFlags().StringVarP(&restBaseURL, "rest-url", "e", envRestBaseURL, "the base URL of the REST API")
 	accountCmd.PersistentFlags().StringVarP(&options.Identity.Password, "password", "p", envKeyFilePwd, "the password to unlock the sender account")
 	accountCmd.PersistentFlags().BoolVarP(&nonInteractive, "non-interactive", "n", envNonInteractive, "commands will not prompt for input (password)")
@@ -91,7 +92,7 @@ func initCmd() {
 
 	serverCmd.PersistentFlags().StringVarP(&options.DB.URI, "database-uri", "d", envDatabaseURI, "Database URI")
 	serverCmd.PersistentFlags().StringVarP(&options.Identity.KeystorePath, "keystore-path", "k", envKeystorePath, "Path to the keystore directory")
-	serverCmd.PersistentFlags().StringVarP(&options.Identity.SignerAddress, "signer-address", "f", envSignerAddress, "the address to send the transaction from (must be an account in the keystore)")
+	serverCmd.PersistentFlags().StringVarP(&options.Identity.SignerAddress, "from", "f", envSignerAddress, "the address to send the transaction from (must be an account in the keystore)")
 	serverCmd.PersistentFlags().StringVarP(&options.Identity.Password, "password", "p", envKeyFilePwd, "Password for key file (or use env var 'KEYFILEPWD')")
 
 	serverCmd.PersistentFlags().StringVarP(&options.Web.ListenAddr, "listen-address", "l", envListenAddr, "Address the REST server listen to (format host:port)")

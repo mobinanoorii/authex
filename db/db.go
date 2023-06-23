@@ -400,3 +400,10 @@ func (c *Connection) GetMarketPrice(market string) (price decimal.Decimal, err e
 	err = c.pool.QueryRow(context.Background(), qVWAP, market).Scan(&price)
 	return price, err
 }
+
+// SetAuthorization sets the authorization status of an account
+func (c *Connection) SetAuthorization(address string, active bool) error {
+	q := `INSERT INTO accounts (address, active) VALUES ($1, $2) ON CONFLICT (address) DO UPDATE SET active = $2`
+	_, err := c.pool.Exec(context.Background(), q, address, active)
+	return err
+}

@@ -84,12 +84,60 @@ func registerMarket(url, baseStr, quoteStr string) (err error) {
 	return
 }
 
-// registerMarketCmd represents the registerMarket command.
-var authorizeCmd = &cobra.Command{
-	Use:     "authorize [account_address]",
+// grantAccessCmd represents the registerMarket command.
+var grantAccessCmd = &cobra.Command{
+	Use:     "grant-access <account-address>",
 	Short:   "Authorize a new account to trade",
 	Args:    cobra.ExactArgs(1),
-	Example: `authex admin authorize 0x1234...`,
+	Example: `authex admin grant-access 0x1234...`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return accessControl(restBaseURL, args[0], true)
+	},
+}
+
+var revokeAccessCmd = &cobra.Command{
+	Use:     "revoke-access <account-address>",
+	Short:   "Revoke access to an account",
+	Args:    cobra.ExactArgs(1),
+	Example: `authex admin revoke-access 0x1234...`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return accessControl(restBaseURL, args[0], false)
+	},
+}
+
+func accessControl(url, account string, grantAccess bool) error {
+	authorization := model.Authorization{
+		Account:    account,
+		Authorized: grantAccess,
+	}
+	// sign the message
+	signature, err := helpers.Sign(
+		options.Identity.KeystorePath,
+		options.Identity.SignerAddress,
+		options.Identity.Password,
+		!nonInteractive,
+		authorization,
+	)
+	if err != nil {
+		println("error signing the message:", err)
+		return err
+	}
+	r := &model.SignedRequest[model.Authorization]{
+		Signature: signature,
+		Payload:   authorization,
+	}
+	// send the request
+	code, data, err := helpers.Post(fmt.Sprint(url, "/admin/accounts/authorize"), r)
+	if err != nil {
+		if grantAccess {
+			println("error granting access to account:", err)
+		} else {
+			println("error revoking access to account:", err)
+		}
+		return err
+	}
+	helpers.PrintResponse(code, data)
+	return nil
 }
 
 var fundCmd = &cobra.Command{
