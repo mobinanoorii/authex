@@ -21,15 +21,15 @@ changelog:
     - title: Features
       regexp: "^.*feat[(\\w)]*:+.*$"
       order: 0
-    - title: 'Bug fixes'
+    - title: "Bug fixes"
       regexp: "^.*fix[(\\w)]*:+.*$"
       order: 1
     - title: Others
       order: 999
   filters:
     exclude:
-      - '^docs:'
-      - '^chore:'
+      - "^docs:"
+      - "^chore:"
 dockers:
   - use: buildx
     goos: linux
@@ -60,3 +60,20 @@ docker_manifests:
     image_templates:
       - ghcr.io/noadrea/{{ .ProjectName }}:{{ .Version }}-amd64
       - ghcr.io/noadrea/{{ .ProjectName }}:{{ .Version }}-arm64v8
+nfpms:
+  - id: packages
+    # Formats to be generated.
+    formats:
+      - deb
+      - rpm
+      - archlinux # Since: v1.13
+    # contents:
+    #   # for updstart
+    #   - src: path/to/local/bar.conf
+    #     dst: /etc/bar.conf
+    #     type: "config|noreplace"
+    #   # for logging
+    #   - dst: /some/dir
+    #     type: dir
+    #     file_info:
+    #       mode: 0700

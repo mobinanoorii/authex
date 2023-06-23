@@ -3,8 +3,14 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - '*'
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   release:
@@ -16,7 +22,7 @@ jobs:
         uses: google-github-actions/release-please-action@v3
         with:
           release-type: go
-          package-name: resolver-driver
+          package-name: authex
           changelog-types: >-
             [
               {"type":"feat","section":"Features","hidden":false},
@@ -28,11 +34,6 @@ jobs:
         if: steps.release-please.outputs.release_created
         with:
           fetch-depth: 0
-      - name: Setup ssh-agent
-        uses: webfactory/ssh-agent@v0.5.4
-        if: steps.release-please.outputs.release_created
-        with:
-          ssh-private-key: ${{ secrets.ELESTO_DEPLOY_KEY }}
       - name: Set up Go
         uses: actions/setup-go@v3
         if: steps.release-please.outputs.release_created
@@ -52,10 +53,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v3
+        uses: goreleaser/goreleaser-action@v4
         if: steps.release-please.outputs.release_created
         with:
-          args: release --rm-dist --config .github/.goreleaser.yaml
+          args: release --clean --config .github/.goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOPRIVATE: github.com/${{ env.GITHUB_REPOSITORY_OWNER }}
