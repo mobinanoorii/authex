@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/noandrea/authex/compare/v0.3.1...v0.4.0) (2023-06-23)
+
+
+### Features
+
+* **build:** add signing ([a23dca5](https://github.com/noandrea/authex/commit/a23dca5e47acf3aa0e7b590df4c7e113f7214986))
+
 ## [0.3.1](https://github.com/noandrea/authex/compare/v0.3.0...v0.3.1) (2023-06-23)
 
 
