@@ -57,5 +57,4 @@ jobs:
           args: release --clean --config .github/.goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # GOPRIVATE: github.com/${{ env.GITHUB_REPOSITORY_OWNER }}
-          GITHUB_ORG : ${{ env.GITHUB_REPOSITORY_OWNER }}
+          GITHUB_ORG : ${{ github.repository_owner }}
