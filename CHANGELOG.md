@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/noandrea/authex/compare/v0.2.2...v0.3.0) (2023-06-23)
+
+
+### Features
+
+* **build:** add example k8s config ([910d667](https://github.com/noandrea/authex/commit/910d667fd10595b9a1ac71b4207186df74a315d7))
+
 ## [0.2.2](https://github.com/noandrea/authex/compare/v0.2.1...v0.2.2) (2023-06-23)
 
 
