@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/noandrea/authex/compare/v0.2.0...v0.2.1) (2023-06-23)
+
+
+### Bug Fixes
+
+* **build:** fix release congfig ([3e3c610](https://github.com/noandrea/authex/commit/3e3c610d54c55cf387822acda8b0e1e5475ea01a))
+
 ## [0.2.0](https://github.com/noandrea/authex/compare/v0.1.0...v0.2.0) (2023-06-23)
 
 
