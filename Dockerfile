@@ -2,14 +2,15 @@
 # STEP 1 build executable binary
 ############################
 FROM golang:alpine AS builder
-ARG DOCKER_TAG=0.0.0
-# checkout the project 
+RUN go install github.com/goreleaser/goreleaser@latest
+RUN apk add --no-cache git
+# checkout the project
 WORKDIR /builder
 COPY . .
 # Fetch dependencies.
 RUN go get -d -v
 # Build the binary.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /authex -ldflags="-s -w -extldflags \"-static\" -X main.Version=$DOCKER_TAG"
+RUN goreleaser build --single-target --config .github/.goreleaser.yaml --clean  --single-target --output /authex
 ############################
 # STEP 2 build a small image
 ############################
@@ -20,4 +21,5 @@ COPY --from=builder /authex /
 # COPY templates /templates
 # Run the hello binary.
 ENTRYPOINT [ "/authex" ]
-CMD [ "start" ]
+CMD [ "server", "start" ]
+

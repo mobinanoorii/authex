@@ -1,5 +1,5 @@
 PACKAGES="./..."
-# build paramters 
+# build paramters
 BUILD_FOLDER = dist
 
 ###############################################################################
@@ -9,14 +9,11 @@ BUILD_FOLDER = dist
 all: install
 
 install: go.sum
-	go install main.go -o $(BUILD_FOLDER)/authex 
+	goreleaser build --single-target --config .github/.goreleaser.yaml --rm-dist --snapshot --single-target --output ~/.local/bin/authex
 
-install-debug: go.sum
-	go build -gcflags="all=-N -l" -o $(BUILD_FOLDER)/authex main.go
-
-build: clean
+build:
 	@echo build binary to $(BUILD_FOLDER)
-	goreleaser build --single-target --config .github/.goreleaser.yaml --snapshot --rm-dist
+	goreleaser build --single-target --config .github/.goreleaser.yaml --snapshot --clean
 	@echo done
 
 clean:
