@@ -5,8 +5,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - '*'
 
 permissions:
   contents: write
@@ -59,4 +57,5 @@ jobs:
           args: release --clean --config .github/.goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GOPRIVATE: github.com/${{ env.GITHUB_REPOSITORY_OWNER }}
+          # GOPRIVATE: github.com/${{ env.GITHUB_REPOSITORY_OWNER }}
+          GITHUB_ORG : ${{ env.GITHUB_REPOSITORY_OWNER }}

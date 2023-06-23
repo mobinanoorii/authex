@@ -35,7 +35,7 @@ dockers:
     goos: linux
     goarch: amd64
     image_templates:
-      - "ghcr.io/noandrea/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Version }}-amd64"
     build_flag_templates:
       - "--pull"
       - "--platform=linux/amd64"
@@ -47,7 +47,7 @@ dockers:
     goos: linux
     goarch: arm64
     image_templates:
-      - "ghcr.io/noandrea/{{ .ProjectName }}:{{ .Version }}-arm64v8"
+      - "ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Version }}-arm64v8"
     build_flag_templates:
       - "--pull"
       - "--platform=linux/arm64"
@@ -56,10 +56,10 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
 docker_manifests:
-  - name_template: ghcr.io/noandrea/{{ .ProjectName }}:{{ .Version }}
+  - name_template: ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Version }}
     image_templates:
-      - ghcr.io/noandrea/{{ .ProjectName }}:{{ .Version }}-amd64
-      - ghcr.io/noandrea/{{ .ProjectName }}:{{ .Version }}-arm64v8
+      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Version }}-amd64
+      - ghcr.io/{{ .Env.GITHUB_ORG }}/{{ .ProjectName }}:{{ .Version }}-arm64v8
 nfpms:
   - id: packages
     # Formats to be generated.
