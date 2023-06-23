@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/noandrea/authex/compare/v0.3.0...v0.3.1) (2023-06-23)
+
+
+### Bug Fixes
+
+* **build:** fix permissions for publishing images ([1308ac2](https://github.com/noandrea/authex/commit/1308ac2132c061ecb158482dd15460c653e7ddb5))
+
 ## [0.3.0](https://github.com/noandrea/authex/compare/v0.2.2...v0.3.0) (2023-06-23)
 
 
