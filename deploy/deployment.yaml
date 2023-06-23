@@ -1,0 +1,122 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authex
+  template:
+    metadata:
+      labels:
+        app: authex
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - image: us-central1-docker.pkg.dev/elesto/elesto/resolver-driver:1.0
+          imagePullPolicy: Always
+          name: application
+          env:
+            - name: KEYSTORE_PATH
+              # note this should be a mounted volume
+              value: "/keystore"
+            - name: KEYFILEPWD
+              valueFrom:
+                secretKeyRef:
+                  name: authex
+                  key: keyfilepwd
+            - name: SIGNER_ADDRESS
+              value: "0x???????"
+            - name: DATABASE_URI
+              value: "postgresql://authex:authex@authex-db:5432/authex"
+            - name: LISTEN_ADDR
+              value: "0.0.0.0:2306"
+            - name: PERMISSIONED
+              value: "false"
+            - name: WEB3_ENDPOINT
+              value: "ws://localhost:8545"
+            - name: WEB3_WS_ENDPOINT
+              value: "ws://localhost:8545"
+            - name: CHAIN_ID
+              value: "65110000"
+            - name: ACCESS_CONTROL_CONTRACT
+              value: "0xCE96F4f662D807623CAB4Ce96B56A44e7cC37a48"
+          ports:
+            - name: rest
+              containerPort: 2306
+          readinessProbe:
+            httpGet:
+              port: rest
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 20000
+            runAsGroup: 20000
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: keystore
+              mountPath: /keystore
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      volumes:
+        # NOTE: this is a temporary volume, it should be replaced with a secret or a persistent volume
+        - name: keystore
+          emptyDir:
+            sizeLimit: 50Mi
+
+---
+## Deployment for the authex postgres database
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authex-db
+spec:
+  selector:
+    matchLabels:
+      app: authex-db
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: authex-db
+    spec:
+      containers:
+        - name: authex-db
+          image: postgres:latest
+          env:
+            - name: POSTGRES_USER
+              value: authex
+            - name: POSTGRES_PASSWORD
+              value: authex
+            - name: POSTGRES_DB
+              value: authex
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          resources:
+            limits:
+              cpu: 1
+              memory: 1Gi
+            requests:
+              cpu: 500m
+              memory: 500Mi
+      volumes:
+        - name: postgres-storage
+          emptyDir: {}

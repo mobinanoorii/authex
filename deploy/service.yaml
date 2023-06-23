@@ -1,0 +1,25 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: authex
+spec:
+  selector:
+    app: authex
+  ports:
+    - port: 2306
+      name: rest
+      targetPort: rest
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authex-db
+spec:
+  selector:
+    app: authex-db
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
