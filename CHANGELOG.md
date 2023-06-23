@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/noandrea/authex/compare/v0.2.1...v0.2.2) (2023-06-23)
+
+
+### Bug Fixes
+
+* **release:** publish docker images ([bac277f](https://github.com/noandrea/authex/commit/bac277fb245039222f279caf5f637c2604ffc6e4))
+
 ## [0.2.1](https://github.com/noandrea/authex/compare/v0.2.0...v0.2.1) (2023-06-23)
 
 
