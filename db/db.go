@@ -64,6 +64,7 @@ func (c *Connection) Run() {
 	// TODO: handle goroutines lifecycle properly
 	wg := sync.WaitGroup{}
 	wg.Add(2)
+	defer wg.Wait()
 
 	// handle ERC20 transfers
 	go func() {
@@ -72,6 +73,7 @@ func (c *Connection) Run() {
 			if !ok {
 				wg.Done()
 				log.Debugf("closing balance handler")
+				break
 			}
 			tx, err := c.pool.BeginTx(context.Background(), pgx.TxOptions{})
 			if err != nil {
@@ -108,12 +110,11 @@ func (c *Connection) Run() {
 			if !ok {
 				wg.Done()
 				log.Debugf("closing match handler")
+				break
 			}
 			c.handleMatch(match)
 		}
 	}()
-
-	wg.Wait()
 }
 
 func (c *Connection) handleMatch(m *model.Match) {
