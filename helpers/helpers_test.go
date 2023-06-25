@@ -50,12 +50,60 @@ func TestComputeMarketAddress(t *testing.T) {
 			want:         "0x36f5e0ce0a49c8b10ae4e0d5214cda5d8b46073d",
 			wantErr:      nil,
 		},
+		{
+			name:         "OK: usd/eur",
+			baseAddress:  helpers.AsAddress("USD"),
+			quoteAddress: helpers.AsAddress("EUR"),
+			want:         "0xd36cfda1a6607e8b79d0c9ea784346a6e21fad86",
+			wantErr:      nil,
+		},
+		{
+			name:         "OK: eth/eur",
+			baseAddress:  helpers.AsAddress("ETH"),
+			quoteAddress: helpers.AsAddress("EUR"),
+			want:         "0x98e08472d3cf60929829c4e252913d0295e64f33",
+			wantErr:      nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := helpers.ComputeMarketAddress(tt.baseAddress, tt.quoteAddress)
 			assert.ErrorIs(t, err, tt.wantErr)
 			assert.Equal(t, got, tt.want)
+		})
+	}
+}
+
+func TestAsAddress(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "OK",
+			input: "USD",
+			want:  "0x505f49beeda8b41a13274e3622c64e61d087a796",
+		},
+		{
+			name:  "OK",
+			input: "EUR",
+			want:  "0x60c197cc20da7f7d7c4d019fb9e66cd79b223c6c",
+		},
+		{
+			name:  "OK",
+			input: "ETH",
+			want:  "0x08db13fc7a9adf7ca72641f84d75b47069d3d7f0",
+		},
+		{
+			name:  "OK",
+			input: "eth",
+			want:  "0x08db13fc7a9adf7ca72641f84d75b47069d3d7f0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, helpers.AsAddress(tt.input), tt.want)
 		})
 	}
 }
