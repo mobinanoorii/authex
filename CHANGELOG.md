@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1](https://github.com/noandrea/authex/compare/v0.5.0...v0.5.1) (2023-06-25)
+
+
+### Bug Fixes
+
+* **docker:** docker image fails to start ([c9d8f36](https://github.com/noandrea/authex/commit/c9d8f362a347d120216210d057e24cc10d036485))
+* insconsistent balance updates on filled orders ([b5fcae5](https://github.com/noandrea/authex/commit/b5fcae5ecd7355a0fc406134a4b8905fcfbe6513))
+* quit routines when channels are closed ([3367660](https://github.com/noandrea/authex/commit/33676602553266bba2e75cb969c369fb5dd68bf8))
+
 ## [0.5.0](https://github.com/noandrea/authex/compare/v0.4.0...v0.5.0) (2023-06-23)
 
 
