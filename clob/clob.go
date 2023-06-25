@@ -69,37 +69,41 @@ func (p *Pool) handleOrder(r *model.SignedRequest[model.Order]) {
 	quantity := decimal.NewFromInt(int64(r.Payload.Size))
 
 	var (
-		done    []*ob.Order
-		partial *ob.Order
-		err     error
+		done            []*ob.Order
+		partial         *ob.Order
+		partialQuantity decimal.Decimal
+		err             error
 	)
 	if r.Payload.Price == "" {
+		log.Debugf("handling market %s order %s", r.Payload.Side, r.Payload.ID)
 		// limit order
-		if done, partial, _, _, err = orderBook.ProcessMarketOrder(side, quantity); err != nil {
+		if done, partial, partialQuantity, _, err = orderBook.ProcessMarketOrder(side, quantity); err != nil {
 			log.Error(err)
 			return
 		}
 	} else {
+		log.Debugf("handling limit %s order %s", r.Payload.Side, r.Payload.ID)
 		price, pErr := decimal.NewFromString(r.Payload.Price)
 		if pErr != nil {
 			log.Error(pErr)
 			return
 		}
 		// market order
-		if done, partial, _, err = orderBook.ProcessLimitOrder(side, r.Payload.ID, quantity, price); err != nil {
+		if done, partial, partialQuantity, err = orderBook.ProcessLimitOrder(side, r.Payload.ID, quantity, price); err != nil {
 			log.Error(err)
 			return
 		}
 	}
 	for _, order := range done {
 		m := orderToMatch(r.Payload.ID, order, model.StatusFilled)
-		log.Debugf("Matched order DONE %s price %s", order.ID(), order.Price())
+		log.Debugf("order %s %s FILLED price %s, quantity %s", m.OrderID, m.Side, m.Price, m.Size)
 		p.Matches <- m
 
 	}
 	if partial != nil {
 		m := orderToMatch(r.Payload.ID, partial, model.StatusPartial)
-		log.Debugf("Matched order PARTIAL %s price %s", partial.ID(), partial.Price())
+		m.Size = partialQuantity
+		log.Debugf("order %s %s PARTIAL price %s, quantity %s", m.OrderID, m.Side, m.Price, m.Size)
 		p.Matches <- m
 	}
 }

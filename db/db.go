@@ -118,7 +118,9 @@ func (c *Connection) Run() {
 }
 
 func (c *Connection) handleMatch(m *model.Match) {
-	tx, err := c.pool.BeginTx(context.Background(), pgx.TxOptions{})
+	tx, err := c.pool.BeginTx(context.Background(), pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead,
+	})
 	if err != nil {
 		log.Errorf("error starting transaction: %v", err)
 		return
@@ -134,36 +136,50 @@ func (c *Connection) handleMatch(m *model.Match) {
 		return
 	}
 	// update orders
-	quote := m.Price.Mul(m.Size)
+	var balanceDelta decimal.Decimal
 	// update balances
 	switch m.Side {
 	case model.SideBid:
+
 		q = `
 		WITH order_details AS (
-			SELECT o.from_address, m.base_address, m.quote_address
-			FROM orders o JOIN markets m ON o.market_address = m.address
+			SELECT o.from_address as _address, m.base_address as _base, m.quote_address as _quote
+			FROM orders o
+			JOIN markets m ON o.market_address = m.address
 			WHERE o.id = $1
-		)
-		INSERT INTO balances (address, asset_address, balance)
-		SELECT from_address, quote_address, $2
-		FROM order_details
-		ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $2`
+		  ),
+		  insert_quote_balance AS (
+			INSERT INTO balances (address, asset_address, balance)
+			SELECT _address, _quote, $2
+			FROM order_details
+			ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + EXCLUDED.balance
+		  )
+		  SELECT 1; `
+		balanceDelta = m.Size
+		log.Debugf("update balances for order id %s side %s:  quote(%s)", m.OrderID, m.Side, balanceDelta)
 	case model.SideAsk:
 		q = `
 		WITH order_details AS (
-			SELECT o.from_address, m.base_address, m.quote_address
-			FROM orders o JOIN markets m ON o.market_address = m.address
+			SELECT o.from_address as _address, m.base_address as _base, m.quote_address as _quote
+			FROM orders o
+			JOIN markets m ON o.market_address = m.address
 			WHERE o.id = $1
+		),
+		insert_base_balance AS (
+			INSERT INTO balances (address, asset_address, balance)
+			SELECT _address, _base, $2
+			FROM order_details
+			ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + EXCLUDED.balance
 		)
-		INSERT INTO balances (address, asset_address, balance)
-		SELECT from_address, base_address, $2
-		FROM order_details
-		ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $2`
+		SELECT 1; `
+		balanceDelta = m.Price.Mul(m.Size)
+		log.Debugf("update balances for order id %s side %s:  base(%s)", m.OrderID, m.Side, balanceDelta)
 	default:
 		log.Errorf("unknown side: %s", m.Side)
 		return
 	}
-	if _, err = tx.Exec(context.Background(), q, m.OrderID, quote); err != nil {
+
+	if _, err = tx.Exec(context.Background(), q, m.OrderID, balanceDelta); err != nil {
 		log.Errorf("handleMatch - error updating balance: %v", err)
 	}
 	if err = tx.Commit(context.Background()); err != nil {
@@ -237,6 +253,16 @@ func (c *Connection) SaveMarket(marketAddress string, base, quote *model.Asset) 
 	}
 	if err = tx.Commit(context.Background()); err != nil {
 		return errors.Join(ErrConnection, err)
+	}
+	return nil
+}
+
+// UpdateBalance updates the balance of an asset for an address
+func (c *Connection) UpdateBalance(address, asset string, delta decimal.Decimal) error {
+	q := `INSERT INTO balances (address, asset_address, balance) VALUES ($1, $2, $3)
+	ON CONFLICT (address, asset_address) DO UPDATE SET balance =   balances.balance + EXCLUDED.balance`
+	if _, err := c.pool.Exec(context.Background(), q, address, asset, delta); err != nil {
+		return errors.Join(ErrUpsert, err)
 	}
 	return nil
 }
@@ -328,38 +354,39 @@ func (c *Connection) ValidateOrder(order *model.Order, from string, quote decima
 
 	var price decimal.Decimal
 	if quote.IsZero() { // it's a limit order, calculate the total amount
-		// it's a limit order, calculate the total amount
-		size := decimal.NewFromInt(int64(order.Size))
 		if price, err = helpers.ParseAmount(order.Price); err != nil {
 			return fmt.Errorf("invalid price")
 		}
-		// calculate the total amount
-		quote = price.Mul(size)
 	}
+
+	size := decimal.NewFromInt(int64(order.Size))
 
 	// open a transaction
 	tx, err := c.pool.Begin(context.Background())
 	if err != nil {
-		return err
+		return errors.Join(ErrConnection, err)
 	}
 	defer txRollback(tx)
 
 	var (
-		newBalance  decimal.Decimal
-		targetAsset string
+		targetAsset  string
+		balanceDelta decimal.Decimal
+		newBalance   decimal.Decimal
 	)
 
 	switch order.Side {
 	case model.SideBid:
 		targetAsset = market.Base.Address
+		balanceDelta = price.Mul(size)
 	case model.SideAsk:
 		targetAsset = market.Quote.Address
+		balanceDelta = size
 	default:
 		return fmt.Errorf("invalid order side")
 	}
 
 	q := `UPDATE balances SET balance = balance - $1 WHERE address = $2 AND asset_address = $3 returning balance`
-	err = tx.QueryRow(context.Background(), q, quote, from, targetAsset).Scan(&newBalance)
+	err = tx.QueryRow(context.Background(), q, balanceDelta, from, targetAsset).Scan(&newBalance)
 	if err != nil {
 		return errors.Join(ErrUpdate, err)
 	}
@@ -420,10 +447,16 @@ func (c *Connection) GetOrder(id string) (order *model.Order, from, status strin
 // it uses the VWAP (Volume Weighted Average Price) formula
 func (c *Connection) GetMarketPrice(market string) (price decimal.Decimal, err error) {
 	qVWAP := `
-	SELECT sum(m.price * m.size)::numeric / sum(m.size)::numeric as vwap
-	FROM matches m JOIN orders o ON m.order_id = o.id
-	WHERE m.status = 'filled' AND o.market_address = $1`
+	SELECT COALESCE(
+	(SELECT sum(m.price * m.size)::numeric / sum(m.size)::numeric
+		FROM matches m
+		JOIN orders o ON m.order_id = o.id
+		WHERE m.status = 'filled' AND o.market_address = $1),
+	0) AS vwap;`
 	err = c.pool.QueryRow(context.Background(), qVWAP, market).Scan(&price)
+	if err != nil {
+		return price, errors.Join(ErrSelect, err)
+	}
 	return price, err
 }
 
@@ -435,7 +468,7 @@ func (c *Connection) SetAuthorization(address string, active bool) error {
 }
 
 func txRollback(tx pgx.Tx) {
-	if err := tx.Rollback(context.Background()); err != nil {
+	if err := tx.Rollback(context.Background()); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 		log.Warnf("tx rollback error: %v", err)
 	}
 }
