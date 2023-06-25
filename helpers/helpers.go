@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -19,6 +20,10 @@ func IsEmpty(s string) bool {
 }
 
 const ZeroAddress = "0x0000000000000000000000000000000000000000"
+
+var (
+	ErrInput = errors.New("invalid input")
+)
 
 // Check if the address is a zero address
 func IsZeroAddress(address common.Address) bool {
@@ -46,9 +51,12 @@ func ComputeMarketAddress(baseAddress string, quoteAddress string) (string, erro
 	sort.Strings(address)
 	var market []byte
 	for _, a := range address {
+		if IsEmpty(a) {
+			return "", errors.Join(ErrInput, errors.New("empty addresses not allowed"))
+		}
 		b, err := hex.DecodeString(strings.ToLower(strings.TrimPrefix(a, "0x")))
 		if err != nil {
-			return "", err
+			return "", errors.Join(ErrInput, err)
 		}
 		market = append(market, b...)
 	}
