@@ -79,7 +79,7 @@ func (n *NodeClient) Run() {
 		monitors++
 		log.Infof("received token to monitor: %s", token)
 		// check if the token is already monitored
-		if _, ok := n.monitoredTokens[token]; ok {
+		if _, ok = n.monitoredTokens[token]; ok {
 			log.Infof("token already monitored: %s", token)
 			continue
 		}
@@ -119,7 +119,7 @@ func (n *NodeClient) monitorToken(address string, monitorID int) {
 
 	for {
 		select {
-		case err := <-sub.Err():
+		case err = <-sub.Err():
 			log.Errorf("[monitor: %d] log: %v", monitorID, err)
 		case t := <-logs:
 
@@ -206,7 +206,7 @@ func Setup(settings *model.Settings) error {
 		return err
 	}
 	if !isAdmin {
-		err := fmt.Errorf("account %s is not admin", signer)
+		err = fmt.Errorf("account %s is not admin", signer)
 		return err
 	}
 	return nil

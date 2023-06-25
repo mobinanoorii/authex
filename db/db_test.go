@@ -17,18 +17,17 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const (
-	DbName = "test_db"
-	DbUser = "test_user"
-	DbPass = "test_password"
-)
-
 func createContainer(ctx context.Context) (testcontainers.Container, string, error) {
 
+	var (
+		dbName = "test_db"
+		dbUser = "test_user"
+		dbPass = "test_password"
+	)
 	var env = map[string]string{
-		"POSTGRES_PASSWORD": DbPass,
-		"POSTGRES_USER":     DbUser,
-		"POSTGRES_DB":       DbName,
+		"POSTGRES_PASSWORD": dbPass,
+		"POSTGRES_USER":     dbUser,
+		"POSTGRES_DB":       dbName,
 	}
 	var port = "5432/tcp"
 
@@ -44,23 +43,23 @@ func createContainer(ctx context.Context) (testcontainers.Container, string, err
 	}
 	container, err := testcontainers.GenericContainer(ctx, req)
 	if err != nil {
-		return container, "", fmt.Errorf("failed to start container: %v", err)
+		return container, "", fmt.Errorf("failed to start container: %w", err)
 	}
 
 	p, err := container.MappedPort(ctx, "5432")
 	if err != nil {
-		return container, "", fmt.Errorf("failed to get container external port: %v", err)
+		return container, "", fmt.Errorf("failed to get container external port: %w", err)
 	}
 
 	log.Println("postgres container ready and running at port: ", p.Port())
 
 	time.Sleep(time.Second)
 
-	dbURI := fmt.Sprint("postgres://", DbUser, ":", DbPass, "@localhost:", p.Port(), "/", DbName, "?sslmode=disable")
+	dbURI := fmt.Sprint("postgres://", dbUser, ":", dbPass, "@localhost:", p.Port(), "/", dbName, "?sslmode=disable")
 
 	db, err := pgxpool.New(ctx, dbURI)
 	if err != nil {
-		return container, dbURI, fmt.Errorf("failed to establish database connection: %v", err)
+		return container, dbURI, fmt.Errorf("failed to establish database connection: %w", err)
 	}
 	db.Close()
 	return container, dbURI, nil
@@ -77,9 +76,12 @@ func TestMain(m *testing.M) {
 	cancel()
 	dbURI = uri
 	defer func() {
-		container.Terminate(ctx)
+		if err = container.Terminate(ctx); err != nil {
+			log.Fatalf("error terminating container %v", err)
+		}
+		os.Exit(m.Run())
 	}()
-	os.Exit(m.Run())
+
 }
 
 func TestConnection_SaveMarket(t *testing.T) {
@@ -145,7 +147,7 @@ func TestConnection_SaveMarket(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := dbCli.SaveMarket(tt.args.marketAddress, tt.args.base, tt.args.quote)
+			err = dbCli.SaveMarket(tt.args.marketAddress, tt.args.base, tt.args.quote)
 			assert.ErrorIs(t, err, tt.wantErr)
 			_, err = dbCli.GetMarketByAddress(tt.args.marketAddress)
 			assert.NoError(t, err, "market must exists")

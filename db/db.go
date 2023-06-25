@@ -25,6 +25,8 @@ var dbSchema string
 var (
 	ErrConnection = errors.New("connection or tx error")
 	ErrInsert     = errors.New("insert error")
+	ErrUpdate     = errors.New("update error")
+	ErrUpsert     = errors.New("upsert error")
 	ErrSelect     = errors.New("select error")
 )
 
@@ -77,20 +79,25 @@ func (c *Connection) Run() {
 			}
 			q := `INSERT INTO balances (address, asset_address, balance) VALUES ($1, $2, $3) ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $3`
 			for _, delta := range t.Deltas {
-				if _, err := tx.Exec(context.Background(), q, delta.Address, t.TokenAddress, delta.Amount); err != nil {
+				if _, err = tx.Exec(context.Background(), q, delta.Address, t.TokenAddress, delta.Amount); err != nil {
 					log.Errorf("error updating the recipient balance: %v", err)
-					tx.Rollback(context.Background())
+					if err = tx.Rollback(context.Background()); err != nil {
+						log.Warnf("tx rollback error: %v", err)
+					}
 					break
 				}
 			}
 			// update token block number
-			if _, err := tx.Exec(context.Background(), "UPDATE assets SET last_block = $1 WHERE address = $2", t.BlockNumber, t.TokenAddress); err != nil {
+			if _, err = tx.Exec(context.Background(), "UPDATE assets SET last_block = $1 WHERE address = $2", t.BlockNumber, t.TokenAddress); err != nil {
 				log.Errorf("error updating the asset block number: %v", err)
-				tx.Rollback(context.Background())
+				if err = tx.Rollback(context.Background()); err != nil {
+					log.Warnf("tx rollback error: %v", err)
+				}
 				break
 			}
-
-			tx.Commit(context.Background())
+			if err = tx.Commit(context.Background()); err != nil {
+				log.Warnf("tx commit error: %v", err)
+			}
 		}
 	}()
 
@@ -115,6 +122,7 @@ func (c *Connection) handleMatch(m *model.Match) {
 		log.Errorf("error starting transaction: %v", err)
 		return
 	}
+	defer txRollback(tx)
 	// insert into matches
 	q := `INSERT INTO matches
 	(id, order_id, price, size, side, matched_at, status)
@@ -122,7 +130,6 @@ func (c *Connection) handleMatch(m *model.Match) {
 	_, err = tx.Exec(context.Background(), q, m.ID, m.OrderID, m.Price, m.Size, m.Side, m.Time, m.Status)
 	if err != nil {
 		log.Errorf("error inserting match: %v", err)
-		tx.Rollback(context.Background())
 		return
 	}
 	// update orders
@@ -153,15 +160,14 @@ func (c *Connection) handleMatch(m *model.Match) {
 		ON CONFLICT (address, asset_address) DO UPDATE SET balance = balances.balance + $2`
 	default:
 		log.Errorf("unknown side: %s", m.Side)
-		tx.Rollback(context.Background())
 		return
 	}
-	_, err = tx.Exec(context.Background(), q, m.OrderID, quote)
-	if err != nil {
+	if _, err = tx.Exec(context.Background(), q, m.OrderID, quote); err != nil {
 		log.Errorf("handleMatch - error updating balance: %v", err)
-		tx.Rollback(context.Background())
 	}
-	tx.Commit(context.Background())
+	if err = tx.Commit(context.Background()); err != nil {
+		log.Warnf("handleMatch - tx commit error: %v", err)
+	}
 }
 
 // Setup the database, open a connection and create the database schema
@@ -180,8 +186,8 @@ func (c *Connection) InitializeSchema() error {
 		return errors.Join(ErrConnection, err)
 	}
 	defer conn.Release()
-	if err := createSchema(conn.Conn(), false); err != nil {
-		return err
+	if err = createSchema(conn.Conn(), false); err != nil {
+		return errors.Join(ErrInsert, err)
 	}
 	return nil
 }
@@ -213,12 +219,12 @@ func (c *Connection) SaveMarket(marketAddress string, base, quote *model.Asset) 
 	if err != nil {
 		return err
 	}
+	defer txRollback(tx)
 
 	q := `INSERT INTO assets(address, symbol, class) VALUES ($1, $2, $3) ON CONFLICT (address) DO NOTHING`
 	for _, a := range []*model.Asset{base, quote} {
 		_, err = tx.Exec(context.Background(), q, a.Address, a.Symbol, a.Class)
 		if err != nil {
-			tx.Rollback(context.Background())
 			return errors.Join(ErrInsert, err)
 		}
 	}
@@ -226,10 +232,11 @@ func (c *Connection) SaveMarket(marketAddress string, base, quote *model.Asset) 
 		`INSERT INTO markets (address, base_address, quote_address, recorded_at)
 		VALUES ($1, $2, $3, $4)`, marketAddress, base.Address, quote.Address, time.Now().UTC())
 	if err != nil {
-		tx.Rollback(context.Background())
 		return errors.Join(ErrInsert, err)
 	}
-	tx.Commit(context.Background())
+	if err = tx.Commit(context.Background()); err != nil {
+		return errors.Join(ErrConnection, err)
+	}
 	return nil
 }
 
@@ -245,17 +252,17 @@ join assets q on (m.quote_address = q.address)
 order by m.recorded_at desc`
 	rows, err := c.pool.Query(context.Background(), q)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrSelect, err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var market model.MarketInfo
-		if err := rows.Scan(
+		if err = rows.Scan(
 			&market.Address, &market.RecordedAt,
 			&market.Base.Symbol, &market.Base.Address, &market.Base.Class,
 			&market.Quote.Symbol, &market.Quote.Address, &market.Quote.Class,
 		); err != nil {
-			return nil, err
+			return nil, errors.Join(ErrSelect, err)
 		}
 		markets = append(markets, &market)
 	}
@@ -278,13 +285,14 @@ where m.address = $1`
 		&market.Quote.Symbol, &market.Quote.Address, &market.Quote.Class,
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrSelect, err)
 	}
 	return &market, nil
 }
 
 func (c *Connection) IsAuthorized(address string) (active bool) {
 	if err := c.pool.QueryRow(context.Background(), "select active from accounts where address = $1", address).Scan(&active); err != nil {
+		log.Warn(err)
 		active = false
 	}
 	return
@@ -294,15 +302,14 @@ func (c *Connection) IsAuthorized(address string) (active bool) {
 func (c *Connection) GetAssetAddressesByClass(class string) ([]string, error) {
 	rows, err := c.pool.Query(context.Background(), "SELECT address FROM assets WHERE class = $1", class)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrSelect, err)
 	}
 	defer rows.Close()
 	var addresses []string
 	for rows.Next() {
 		var address string
-		err = rows.Scan(&address)
-		if err != nil {
-			return nil, err
+		if err = rows.Scan(&address); err != nil {
+			return nil, errors.Join(ErrSelect, err)
 		}
 		addresses = append(addresses, address)
 	}
@@ -322,8 +329,7 @@ func (c *Connection) ValidateOrder(order *model.Order, from string, quote decima
 	if quote.IsZero() { // it's a limit order, calculate the total amount
 		// it's a limit order, calculate the total amount
 		size := decimal.NewFromInt(int64(order.Size))
-		price, err := helpers.ParseAmount(order.Price)
-		if err != nil {
+		if price, err = helpers.ParseAmount(order.Price); err != nil {
 			return fmt.Errorf("invalid price")
 		}
 		// calculate the total amount
@@ -335,6 +341,7 @@ func (c *Connection) ValidateOrder(order *model.Order, from string, quote decima
 	if err != nil {
 		return err
 	}
+	defer txRollback(tx)
 
 	var (
 		newBalance  decimal.Decimal
@@ -353,11 +360,9 @@ func (c *Connection) ValidateOrder(order *model.Order, from string, quote decima
 	q := `UPDATE balances SET balance = balance - $1 WHERE address = $2 AND asset_address = $3 returning balance`
 	err = tx.QueryRow(context.Background(), q, quote, from, targetAsset).Scan(&newBalance)
 	if err != nil {
-		tx.Rollback(context.Background())
-		return err
+		return errors.Join(ErrUpdate, err)
 	}
 	if newBalance.IsNegative() {
-		tx.Rollback(context.Background())
 		return fmt.Errorf("insufficient %s balance", targetAsset)
 	}
 
@@ -368,12 +373,12 @@ func (c *Connection) ValidateOrder(order *model.Order, from string, quote decima
 	q = `INSERT INTO orders (id, market_address, from_address, side, price, size, recorded_at, submitted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	_, err = tx.Exec(context.Background(), q, order.ID, market.Address, from, order.Side, price, order.Size, order.RecordedAt, order.SubmittedAt)
 	if err != nil {
-		tx.Rollback(context.Background())
-		return err
+		return errors.Join(ErrInsert, err)
 	}
-
-	tx.Commit(context.Background())
-	return err
+	if err = tx.Commit(context.Background()); err != nil {
+		return errors.Join(ErrConnection, err)
+	}
+	return nil
 }
 
 func (c *Connection) GetBalance(address, token string) (decimal.Decimal, error) {
@@ -426,4 +431,10 @@ func (c *Connection) SetAuthorization(address string, active bool) error {
 	q := `INSERT INTO accounts (address, active) VALUES ($1, $2) ON CONFLICT (address) DO UPDATE SET active = $2`
 	_, err := c.pool.Exec(context.Background(), q, address, active)
 	return err
+}
+
+func txRollback(tx pgx.Tx) {
+	if err := tx.Rollback(context.Background()); err != nil {
+		log.Warnf("tx rollback error: %v", err)
+	}
 }

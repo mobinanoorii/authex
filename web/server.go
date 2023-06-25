@@ -251,6 +251,14 @@ func er(reqID, msg string, opts ...func(map[string]any)) map[string]any {
 	return rsp(reqID, valError, append(opts, withMsg(msg))...)
 }
 
+func reqID(c echo.Context) string {
+	reqID, ok := c.Get(keyRequestID).(string)
+	if !ok {
+		c.Logger().Warn("cannot retrieve the request ID")
+	}
+	return reqID
+}
+
 // extractAddress verifies the signature of an order
 // https://goethereumbook.org/signature-verify/
 // // TODO: the signature verification may be weak since tbe messages can be replayed
@@ -287,7 +295,7 @@ func (r AuthexServer) isAuthorized(address string) (err error) {
 }
 
 func (r AuthexServer) isAdmin(c echo.Context, signature string, payload model.Serializable) error {
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	sender, err := extractAddress(signature, payload)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, er(requestID, err.Error()))
@@ -304,7 +312,7 @@ func (r AuthexServer) isAdmin(c echo.Context, signature string, payload model.Se
 
 func (r AuthexServer) registerMarket(c echo.Context) error {
 	// generate a new request id to be used in logging
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 
 	cmr := &model.SignedRequest[model.Market]{}
 	if err := c.Bind(cmr); err != nil {
@@ -359,7 +367,7 @@ func (r AuthexServer) registerMarket(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, er(requestID, "invalid addresses for base or quote"))
 	}
 	log.Infof("new market address: %s", marketAddr)
-	if err := r.dbCli.SaveMarket(marketAddr, base, quote); err != nil {
+	if err = r.dbCli.SaveMarket(marketAddr, base, quote); err != nil {
 		log.Errorf("error saving market: %s [incident: %s]", err.Error(), requestID)
 		return c.JSON(http.StatusInternalServerError, er(requestID, "error saving market"))
 	}
@@ -378,7 +386,7 @@ func (r AuthexServer) registerMarket(c echo.Context) error {
 
 // getMarket returns the market details for a given market address
 func (r AuthexServer) getMarketByAddress(c echo.Context) error {
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	marketID := c.Param("address")
 	m, err := r.dbCli.GetMarketByAddress(marketID)
 	if err != nil {
@@ -392,7 +400,7 @@ func (r AuthexServer) getMarketByAddress(c echo.Context) error {
 
 // getMarkets returns the list of markets
 func (r AuthexServer) getMarkets(c echo.Context) error {
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	markets, err := r.dbCli.GetMarkets()
 	if err != nil {
 		log.Errorf("error getting markets: %s [incident: %s]", err.Error(), requestID)
@@ -404,7 +412,7 @@ func (r AuthexServer) getMarkets(c echo.Context) error {
 // fund adds funds to the an account
 func (r AuthexServer) fund(c echo.Context) error {
 	// generate a new request id to be used in logging
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	req := &model.SignedRequest[model.Funding]{}
 	if err := c.Bind(req); err != nil {
 		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
@@ -435,7 +443,7 @@ func (r AuthexServer) fund(c echo.Context) error {
 // fund adds funds to the an account
 func (r AuthexServer) handleAuthorization(c echo.Context) error {
 	// generate a new request id to be used in logging
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	req := &model.SignedRequest[model.Authorization]{}
 	if err := c.Bind(req); err != nil {
 		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
@@ -459,7 +467,7 @@ func (r AuthexServer) handleAuthorization(c echo.Context) error {
 // the fields ID and RecordedAt are overwritten by the server
 func (r AuthexServer) postOrder(c echo.Context) error {
 	// generate a new request id to be used in logging
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	req := &model.SignedRequest[model.Order]{}
 	if err := c.Bind(req); err != nil {
 		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
@@ -471,7 +479,7 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 		log.Errorf("error extracting account address: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusUnauthorized, er(requestID, "error extracting account address"))
 	}
-	if err := r.isAuthorized(sender); err != nil {
+	if err = r.isAuthorized(sender); err != nil {
 		log.Errorf("error authorizing address: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
 	}
@@ -483,13 +491,13 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 		req.Payload.SubmittedAt = req.Payload.RecordedAt
 	}
 	if req.Payload.RecordedAt.Sub(req.Payload.SubmittedAt) > 2*time.Second {
-		err := fmt.Errorf("order is older than 2 seconds")
+		err = fmt.Errorf("order is older than 2 seconds")
 		log.Errorf("error validating order: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusBadRequest, er(requestID, "order is older than 2 seconds"))
 	}
 
 	// validate the order
-	if err := req.Payload.Validate(); err != nil {
+	if err = req.Payload.Validate(); err != nil {
 		log.Errorf("error validating order: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order"))
 	}
@@ -504,7 +512,7 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 		}
 	}
 	// TODO this modifies the order (assign the ID), refactor
-	if err := r.dbCli.ValidateOrder(&req.Payload, sender, quote); err != nil {
+	if err = r.dbCli.ValidateOrder(&req.Payload, sender, quote); err != nil {
 		log.Errorf("error validating order on db: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusBadRequest, er(requestID, "invalid order"))
 	}
@@ -515,7 +523,7 @@ func (r AuthexServer) postOrder(c echo.Context) error {
 }
 
 func (r AuthexServer) cancelOrder(c echo.Context) error {
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	req := &model.SignedRequest[model.Order]{}
 	if err := c.Bind(req); err != nil {
 		log.Errorf("error binding request: %v, [incident: %s]", err, requestID)
@@ -527,7 +535,7 @@ func (r AuthexServer) cancelOrder(c echo.Context) error {
 		log.Errorf("error extracting account address: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusUnauthorized, er(requestID, "error extracting account address"))
 	}
-	if err := r.isAuthorized(sender); err != nil {
+	if err = r.isAuthorized(sender); err != nil {
 		log.Errorf("error authorizing address: %v, [incident: %s]", err, requestID)
 		return c.JSON(http.StatusUnauthorized, er(requestID, "unauthorized"))
 	}
@@ -552,7 +560,7 @@ func (r AuthexServer) cancelOrder(c echo.Context) error {
 }
 
 func (r AuthexServer) getOrder(c echo.Context) error {
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	orderID := c.Param("id")
 	order, _, status, err := r.dbCli.GetOrder(orderID)
 	if err != nil {
@@ -571,7 +579,7 @@ func (r AuthexServer) withdraw(c echo.Context) error {
 
 // getMarketQuote returns the current quote for a given market
 func (r AuthexServer) getMarketQuote(c echo.Context) error {
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	market := c.Param("address")
 	side := c.Param("side")
 
@@ -599,7 +607,7 @@ func (r AuthexServer) getMarketQuote(c echo.Context) error {
 
 // getMarketPrice returns the current price for a given market
 func (r AuthexServer) getMarketPrice(c echo.Context) error {
-	requestID := c.Get(keyRequestID).(string)
+	requestID := reqID(c)
 	market := c.Param("address")
 	price, err := r.dbCli.GetMarketPrice(market)
 	if err != nil {

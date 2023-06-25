@@ -80,9 +80,9 @@ func (p *Pool) handleOrder(r *model.SignedRequest[model.Order]) {
 			return
 		}
 	} else {
-		price, err := decimal.NewFromString(r.Payload.Price)
-		if err != nil {
-			log.Error(err)
+		price, pErr := decimal.NewFromString(r.Payload.Price)
+		if pErr != nil {
+			log.Error(pErr)
 			return
 		}
 		// market order

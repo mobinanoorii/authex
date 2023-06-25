@@ -15,7 +15,7 @@ var (
 	// used by the client to be non-interactive
 	nonInteractive bool
 	// used by the server setup to reset the database
-	resetDb bool
+	resetDB bool
 )
 
 func initCmd() {
@@ -41,7 +41,7 @@ func initCmd() {
 	envDatabaseURI := helpers.EnvStr("DATABASE_URI", "postgres://app:app@localhost:5432/authex")
 	envListenAddr := helpers.EnvStr("LISTEN_ADDR", "0.0.0.0:2306")
 	envPermissioned := helpers.EnvBool("PERMISSIONED", false)
-	envRpcEndpoint := helpers.EnvStr("WEB3_ENDPOINT", "https://rpc0.devnet.clearmatics.network:443/")
+	envRPCEndpoint := helpers.EnvStr("WEB3_ENDPOINT", "https://rpc0.devnet.clearmatics.network:443/")
 	envWsEndpoint := helpers.EnvStr("WEB3_WS_ENDPOINT", "wss://rpc0.devnet.clearmatics.network/ws")
 	envChainID := helpers.EnvStr("CHAIN_ID", "65110000")
 	envAccessControlContractAddress := helpers.EnvStr("ACCESS_CONTROL_CONTRACT", "0xCE96F4f662D807623CAB4Ce96B56A44e7cC37a48")
@@ -97,13 +97,13 @@ func initCmd() {
 
 	serverCmd.PersistentFlags().StringVarP(&options.Web.ListenAddr, "listen-address", "l", envListenAddr, "Address the REST server listen to (format host:port)")
 	serverCmd.PersistentFlags().BoolVar(&options.Web.Permissioned, "permissioned", envPermissioned, "when the flag is set only authorized accounts are allowed to interact authex")
-	serverCmd.PersistentFlags().StringVarP(&options.Network.RPCEndpoint, "rpc-endpoint", "r", envRpcEndpoint, "RPC endpoint (defaults to WEB3_ENDPOINT env var if set)")
+	serverCmd.PersistentFlags().StringVarP(&options.Network.RPCEndpoint, "rpc-endpoint", "r", envRPCEndpoint, "RPC endpoint (defaults to WEB3_ENDPOINT env var if set)")
 	serverCmd.PersistentFlags().StringVarP(&options.Network.WSEndpoint, "ws-endpoint", "w", envWsEndpoint, "WS endpoint (defaults to WEB3_WS_ENDPOINT env var if set)")
 	serverCmd.PersistentFlags().StringVarP(&options.Network.ChainID, "chain-id", "I", envChainID, "The chain ID of the network to connect to")
 
 	serverCmd.PersistentFlags().StringVarP(&options.Identity.AccessContractAddress, "access-control-contract", "z", envAccessControlContractAddress, "The contract address to look for access control (must be an AcccessControl contract)")
 
-	setupCmd.Flags().BoolVar(&resetDb, "reset", false, "Reset the database before setup")
+	setupCmd.Flags().BoolVar(&resetDB, "reset", false, "Reset the database before setup")
 
 	serverCmd.AddCommand(setupCmd)
 	serverCmd.AddCommand(startCmd)
@@ -127,7 +127,7 @@ func Execute(v string) error {
 	return rootCmd.Execute()
 }
 
-func requireFromAddress(cmd *cobra.Command, args []string) {
+func requireFromAddress(*cobra.Command, []string) {
 	// check that the from address is set
 	if helpers.IsEmpty(options.Identity.SignerAddress) {
 		fmt.Println("error: signer address is not set, use the --from flag to set the address")
