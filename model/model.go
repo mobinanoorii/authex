@@ -4,6 +4,7 @@ import (
 	"authex/helpers"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -34,10 +35,10 @@ var (
 )
 
 // ErrMarketNotFound is returned when the market is not found
-var ErrMarketNotFound = fmt.Errorf("market not found")
+var ErrMarketNotFound = errors.New("market not found")
 
 // ErrOrderNotFound is returned when the order is not found
-var ErrOrderNotFound = fmt.Errorf("order not found")
+var ErrOrderNotFound = errors.New("order not found")
 
 // -----------------------------------------------------------------------------
 // Server settings

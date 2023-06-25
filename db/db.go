@@ -22,6 +22,12 @@ import (
 //go:embed schema.sql
 var dbSchema string
 
+var (
+	ErrConnection = errors.New("connection or tx error")
+	ErrInsert     = errors.New("insert error")
+	ErrSelect     = errors.New("select error")
+)
+
 type Connection struct {
 	pool      *pgxpool.Pool
 	Matches   chan *model.Match
@@ -162,7 +168,7 @@ func (c *Connection) handleMatch(m *model.Match) {
 func Setup(options *model.Settings, force bool) error {
 	conn, err := pgx.Connect(context.Background(), options.DB.URI)
 	if err != nil {
-		return err
+		return errors.Join(ErrConnection, err)
 	}
 	defer conn.Close(context.Background())
 	return createSchema(conn, force)
@@ -171,7 +177,7 @@ func Setup(options *model.Settings, force bool) error {
 func (c *Connection) InitializeSchema() error {
 	conn, err := c.pool.Acquire(context.Background())
 	if err != nil {
-		return err
+		return errors.Join(ErrConnection, err)
 	}
 	defer conn.Release()
 	if err := createSchema(conn.Conn(), false); err != nil {
@@ -189,13 +195,16 @@ func createSchema(conn *pgx.Conn, overwrite bool) error {
 		WHERE table_schema = 'public' AND table_name = 'markets');`
 	err := conn.QueryRow(context.Background(), q).Scan(&schemaExists)
 	if err != nil {
-		return err
+		return errors.Join(ErrSelect, err)
 	}
 	if schemaExists && !overwrite {
 		return nil
 	}
 	_, err = conn.Exec(context.Background(), dbSchema)
-	return err
+	if err != nil {
+		return errors.Join(ErrInsert, err)
+	}
+	return nil
 }
 
 // SaveMarket saves a market to the database
@@ -204,26 +213,21 @@ func (c *Connection) SaveMarket(marketAddress string, base, quote *model.Asset) 
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(context.Background(),
-		`INSERT INTO assets(address, symbol, class)
-		VALUES ($1, $2, $3) ON CONFLICT (address) DO NOTHING`, base.Address, base.Symbol, base.Class)
-	if err != nil {
-		tx.Rollback(context.Background())
-		return err
-	}
-	_, err = tx.Exec(context.Background(),
-		`INSERT INTO assets(address, symbol, class)
-			VALUES ($1, $2, $3) ON CONFLICT (address) DO NOTHING`, quote.Address, quote.Symbol, quote.Class)
-	if err != nil {
-		tx.Rollback(context.Background())
-		return err
+
+	q := `INSERT INTO assets(address, symbol, class) VALUES ($1, $2, $3) ON CONFLICT (address) DO NOTHING`
+	for _, a := range []*model.Asset{base, quote} {
+		_, err = tx.Exec(context.Background(), q, a.Address, a.Symbol, a.Class)
+		if err != nil {
+			tx.Rollback(context.Background())
+			return errors.Join(ErrInsert, err)
+		}
 	}
 	_, err = tx.Exec(context.Background(),
 		`INSERT INTO markets (address, base_address, quote_address, recorded_at)
 		VALUES ($1, $2, $3, $4)`, marketAddress, base.Address, quote.Address, time.Now().UTC())
 	if err != nil {
 		tx.Rollback(context.Background())
-		return err
+		return errors.Join(ErrInsert, err)
 	}
 	tx.Commit(context.Background())
 	return nil
