@@ -47,8 +47,7 @@ func createContainer(ctx context.Context) (testcontainers.Container, string, err
 			WaitingFor:   wait.ForLog("database system is ready to accept connections"),
 			Cmd:          []string{"-c", "fsync=off"},
 		},
-		Started:      true,
-		ProviderType: testcontainers.ProviderPodman,
+		Started: true,
 	}
 	container, err := testcontainers.GenericContainer(ctx, req)
 	if err != nil {
