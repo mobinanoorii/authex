@@ -4,6 +4,7 @@ Ethereum Centralized Exchange, a Central Limit Order Book with attitude.
 
 > THE PROJECT IS IN VERY EARLY STAGE
 
+[![codecov](https://codecov.io/gh/noandrea/authex/branch/main/graph/badge.svg?token=8ZZXN3XOAJ)](https://codecov.io/gh/noandrea/authex)
 
 The project binaries contain both the server and the client, the client is a command line tool that can be used to interact with the server.
 
@@ -167,4 +168,37 @@ Flags:
   -e, --rest-url string        the base URL of the REST API (default "http://127.0.0.1:2306")
 
 Use "authex account [command] --help" for more information about a command.
+```
+
+## Binaries
+
+Binaries are available for Linux on the [release page](https://github.com/noandrea/authex/releases).
+
+Artifacts checksums are available in the `checksums.txt` file, to verify the integrity of the binaries you can use the following command:
+
+```console
+
+export AUTHEX_VERSION=0.5.0
+curl -LO https://github.com/noandrea/authex/releases/download/v"$AUTHEX_VERSION"/authex_"$AUTHEX_VERSION"_checksums.txt
+curl -LO https://github.com/noandrea/authex/releases/download/v"$AUTHEX_VERSION"/authex_"$AUTHEX_VERSION"_linux_amd64.tar.gz
+test "$(cat authex_"$AUTHEX_VERSION"_checksums.txt| grep linux_amd64.tar.gz)" = "$(sha256sum authex_"$AUTHEX_VERSION"_linux_amd64.tar.gz)" && echo Yes || echo No
+
+```
+
+The checksum is signed with the following PGP key at [839409EF054B9E6A](https://keys.openpgp.org/search?q=839409EF054B9E6A). To verify the signature you can use the following command:
+
+```console
+export AUTHEX_VERSION=0.5.0
+gpg --keyserver keys.openpgp.org --recv 839409EF054B9E6A
+curl -LO https://github.com/noandrea/authex/releases/download/v"$AUTHEX_VERSION"/authex_"$AUTHEX_VERSION"_checksums.txt.sig
+gpg --verify authex_"$AUTHEX_VERSION"_checksums.txt.sig
+```
+
+the output should be similar to the following:
+
+```console
+gpg: assuming signed data in 'authex_0.5.0_checksums.txt'
+gpg: Signature made Fri 23 Jun 2023 07:02:29 PM CEST
+gpg:                using EDDSA key C1956FA64BA3D28EF0D23643839409EF054B9E6A
+gpg: Good signature from "Andrea Giacobino (Releases signature key) <no.andrea@gmail.com>" [ultimate]
 ```
