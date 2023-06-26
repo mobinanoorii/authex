@@ -4,7 +4,7 @@ Ethereum Centralized Exchange, a Central Limit Order Book with attitude.
 
 > THE PROJECT IS IN VERY EARLY STAGE
 
-[![codecov](https://codecov.io/gh/noandrea/authex/branch/main/graph/badge.svg?token=8ZZXN3XOAJ)](https://codecov.io/gh/noandrea/authex)
+[![codecov](https://codecov.io/gh/clearmatics/authex/branch/main/graph/badge.svg?token=8ZZXN3XOAJ)](https://codecov.io/gh/clearmatics/authex)
 
 The project binaries contain both the server and the client, the client is a command line tool that can be used to interact with the server.
 
